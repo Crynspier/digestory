@@ -22,3 +22,13 @@ class CompatibilityTest < Minitest::Test
     assert_includes header, 'qop="auth"'
   end
 end
+
+
+class CompatibilityCredentialTest < Minitest::Test
+  def test_preserves_plus_in_uri_credentials
+    auth = Net::HTTP::DigestAuth.new
+    uri = URI("http://u+v:p+q@example.org/")
+    header = auth.auth_header(uri, 'Digest realm="r", qop="auth", algorithm=MD5, nonce="n"', "GET")
+    assert_includes header, 'username="u+v"'
+  end
+end
