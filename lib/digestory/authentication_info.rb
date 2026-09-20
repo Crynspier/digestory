@@ -46,6 +46,12 @@ module Digestory
       if @qop && !%w[auth auth-int].include?(@qop)
         raise InvalidAuthenticationInfo, "unsupported qop #{@qop.inspect}"
       end
+      if @qop && (@cnonce.nil? || @nc.nil?)
+        raise InvalidAuthenticationInfo, "qop requires cnonce and nonce-count"
+      end
+      if (@cnonce || @nc) && @qop.nil?
+        raise InvalidAuthenticationInfo, "cnonce and nonce-count require qop"
+      end
     end
   end
 end
