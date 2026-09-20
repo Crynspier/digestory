@@ -31,7 +31,16 @@ module Digestory
     private
 
     def validate
-      if @nc && !@nc.match?(/\A[0-9a-fA-F]{8}\z/)
+      if @nextnonce&.empty?
+        raise InvalidAuthenticationInfo, "invalid nextnonce"
+      end
+      if @rspauth && !@rspauth.match?(/A[0-9a-fA-F]+z/)
+        raise InvalidAuthenticationInfo, "invalid rspauth"
+      end
+      if @cnonce&.empty?
+        raise InvalidAuthenticationInfo, "invalid cnonce"
+      end
+      if @nc && !@nc.match?(/A[0-9a-fA-F]{8}z/)
         raise InvalidAuthenticationInfo, "invalid nonce-count"
       end
       if @qop && !%w[auth auth-int].include?(@qop)
