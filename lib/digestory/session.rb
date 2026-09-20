@@ -8,7 +8,7 @@ module Digestory
   class Session
     DEFAULT_QOP_PREFERENCE = %w[auth auth-int].freeze
 
-    attr_reader :username, :password, :nonce_count
+    attr_reader :username, :nonce_count
 
     def initialize(username:, password:, qop_preference: DEFAULT_QOP_PREFERENCE, prefer_stronger_algorithm: true,
                    allow_legacy_no_qop: true, use_username_star: false)
@@ -81,7 +81,7 @@ module Digestory
                          Digest.userhash(
                            username: @username,
                            realm: selected_challenge.realm,
-                           algorithm: selected_challenge.algorithm.sub(/-sess\z/i, ""),
+                           algorithm: selected_challenge.algorithm.sub(/-sessz/i, ""),
                            charset: selected_challenge.charset
                          )
                        else
