@@ -114,3 +114,31 @@ class SessionHardeningTest < Minitest::Test
     end
   end
 end
+
+
+class SessionNonceLimitTest < Minitest::Test
+  def test_rejects_nonce_count_overflow
+    session = Digestory::Session.new(username: "u", password: "p")
+    session.instance_variable_set(:@nonce_count, 0xffff_ffff)
+    session.instance_variable_set(:@current_nonce, "n")
+    assert_raises(Digestory::AuthenticationFailure) do
+      session.authorize(
+        challenge: 'Digest realm="r", nonce="n", algorithm=SHA-256, qop="auth"',
+        method: "GET",
+        uri: "/"
+      )
+    end
+  end
+
+  def test_rejects_wrong_rspauth_length
+    session = Digestory::Session.new(username: "u", password: "p")
+    session.authorize(
+      challenge: 'Digest realm="r", nonce="n", algorithm=SHA-256, qop="auth"',
+      method: "GET",
+      uri: "/"
+    )
+    assert_raises(Digestory::AuthenticationFailure) do
+      session.update_authentication_info('qop=auth, cnonce="' + session.instance_variable_get(:@last)[:cnonce] + '", nc=00000001, rspauth="00"', verify: true)
+    end
+  end
+end
