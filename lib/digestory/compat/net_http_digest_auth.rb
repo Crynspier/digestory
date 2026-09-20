@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 require "net/http"
+require "digest"
 require "securerandom"
 require "uri"
-require "cgi"
 require "digestory"
 
 module Net
@@ -19,7 +19,11 @@ module Net
       end
 
       def make_cnonce
-        SecureRandom.base64(32)
+        Digest::MD5.hexdigest([
+          Time.now.to_i,
+          Process.pid,
+          SecureRandom.random_number(2**32)
+        ].join(":"))
       end
 
       def next_nonce
