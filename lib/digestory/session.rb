@@ -11,7 +11,7 @@ module Digestory
     attr_reader :username, :nonce_count
 
     def initialize(username:, password:, qop_preference: DEFAULT_QOP_PREFERENCE, prefer_stronger_algorithm: true,
-                   allow_legacy_no_qop: true, use_username_star: false)
+                   allow_legacy_no_qop: false, use_username_star: false)
       @username = username.to_s
       @password = password.to_s
       @qop_preference = qop_preference.map { |q| q.to_s.downcase }.freeze
@@ -25,15 +25,23 @@ module Digestory
     end
 
     def authorize(challenge:, method:, uri:, entity_body: nil, qop: nil, cnonce: nil)
-      challenge = if challenge.is_a?(String)
-                    parsed = Challenge.parse_all(challenge)
-                    select_challenge(parsed)
-                  elsif challenge.is_a?(Array)
-                    select_challenge(challenge)
-                  else
-                    challenge
-                  end
-      selected_challenge = challenge
+      challenges = case challenge
+                   when String
+                     Challenge.parse_all(challenge)
+                   when Array
+                     challenge.flat_map { |item| item.is_a?(Challenge) ? [item] : Challenge.parse_all(item.to_s) }
+                   when Challenge
+                     [challenge]
+                   else
+                     raise InvalidChallenge, "challenge must be a String, Challenge, or Array"
+                   end
+
+      selected_challenge = select_challenge(
+        challenges,
+        qop: qop,
+        entity_body: entity_body
+      )
+
       previous_nonce = @mutex.synchronize { @last && @last[:challenge]&.nonce }
       pending_nonce = @mutex.synchronize { @next_nonce }
       if pending_nonce && previous_nonce == selected_challenge.nonce
@@ -66,10 +74,6 @@ module Digestory
         end
       end
 
-      if Algorithm.sess?(selected_challenge.algorithm) && generated_cnonce.nil?
-        raise InvalidChallenge, "session algorithm requires cnonce"
-      end
-
       response = Digest.response(
         challenge: selected_challenge,
         username: @username,
@@ -88,7 +92,7 @@ module Digestory
                          Digest.userhash(
                            username: @username,
                            realm: selected_challenge.realm,
-                           algorithm: selected_challenge.algorithm.sub(/-sess\z/i, ""),
+                           algorithm: selected_challenge.algorithm.sub(/-sessz/i, ""),
                            charset: selected_challenge.charset
                          )
                        else
@@ -132,8 +136,19 @@ module Digestory
     def update_authentication_info(header, response_body: nil, verify: false)
       info = AuthenticationInfo.parse(header)
       state = @mutex.synchronize { @last }
-      if verify && info.rspauth
+
+      if verify
         raise AuthenticationFailure, "no prior authenticated request" unless state
+        raise AuthenticationFailure, "missing rspauth" unless info.rspauth
+
+        if state[:qop]
+          unless info.qop == state[:qop] && info.cnonce == state[:cnonce] && info.nc == state[:nc]
+            raise AuthenticationFailure, "Authentication-Info request parameters mismatch"
+          end
+        elsif info.qop
+          raise AuthenticationFailure, "unexpected Authentication-Info qop"
+        end
+
         expected = Digest.rspauth(
           challenge: state[:challenge],
           username: state[:username],
@@ -148,6 +163,7 @@ module Digestory
           raise AuthenticationFailure, "Authentication-Info rspauth mismatch"
         end
       end
+
       if info.nextnonce
         @mutex.synchronize do
           @next_nonce = info.nextnonce
@@ -162,17 +178,42 @@ module Digestory
 
     private
 
-    def select_challenge(challenges)
+    def select_challenge(challenges, qop:, entity_body:)
       raise InvalidChallenge, "no Digest challenge found" if challenges.empty?
-      return challenges.first unless @prefer_stronger_algorithm
 
-      challenges.max_by { |item| Algorithm.secure_rank(item.algorithm) }
+      usable = challenges.select do |item|
+        begin
+          requested_qop = qop&.to_s&.downcase
+          chosen_qop = requested_qop || item.choose_qop(
+            preference: @qop_preference,
+            allow_legacy_no_qop: @allow_legacy_no_qop
+          )
+          next false if requested_qop && !item.supports_qop?(requested_qop)
+          next false if chosen_qop == "auth-int" && entity_body.nil?
+          true
+        rescue UnsupportedQop
+          false
+        end
+      end
+
+      raise UnsupportedQop, "no Digest challenge supports the requested qop and policy" if usable.empty?
+      return usable.first unless @prefer_stronger_algorithm
+
+      usable.max_by { |item| Algorithm.secure_rank(item.algorithm) }
     end
 
     def request_uri(uri)
-      value = uri.is_a?(URI) ? uri.request_uri : uri.to_s
-      value = "/#{value}" unless value.start_with?("/")
-      value
+      return uri.request_uri if uri.is_a?(URI)
+
+      value = uri.to_s
+      return value if value == "*" || value.start_with?("/")
+
+      parsed = URI.parse(value)
+      return value if parsed.absolute?
+
+      "/#{value}"
+    rescue URI::InvalidURIError
+      "/#{value}"
     end
 
     def ascii_only?(value)
