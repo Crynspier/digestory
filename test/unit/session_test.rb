@@ -68,3 +68,49 @@ class SessionTest < Minitest::Test
     assert_nil session.next_nonce
   end
 end
+
+
+class SessionHardeningTest < Minitest::Test
+  def test_requires_qop_by_default
+    session = Digestory::Session.new(username: "u", password: "p")
+    assert_raises(Digestory::UnsupportedQop) do
+      session.authorize(
+        challenge: 'Digest realm="r", nonce="n", algorithm=SHA-256',
+        method: "GET",
+        uri: "/"
+      )
+    end
+  end
+
+  def test_falls_back_when_stronger_challenge_has_unsupported_qop
+    session = Digestory::Session.new(username: "u", password: "p")
+    challenge = [
+      Digestory::Challenge.parse('Digest realm="strong", nonce="s", algorithm=SHA-256, qop="auth-conf"'),
+      Digestory::Challenge.parse('Digest realm="usable", nonce="u", algorithm=MD5, qop="auth"')
+    ]
+    header = session.authorize(challenge: challenge, method: "GET", uri: "/")
+    assert_includes header, 'realm="usable"'
+  end
+
+  def test_preserves_absolute_form_request_target_string
+    session = Digestory::Session.new(username: "u", password: "p")
+    header = session.authorize(
+      challenge: 'Digest realm="r", nonce="n", algorithm=SHA-256, qop="auth"',
+      method: "GET",
+      uri: "http://example.org/resource?x=1"
+    )
+    assert_includes header, 'uri="http://example.org/resource?x=1"'
+  end
+
+  def test_verification_rejects_mismatched_authentication_info_context
+    session = Digestory::Session.new(username: "u", password: "p")
+    session.authorize(
+      challenge: 'Digest realm="r", nonce="n", algorithm=SHA-256, qop="auth"',
+      method: "GET",
+      uri: "/"
+    )
+    assert_raises(Digestory::AuthenticationFailure) do
+      session.update_authentication_info('qop=auth, rspauth="' + ("0" * 64) + '", cnonce="wrong", nc=00000001', verify: true)
+    end
+  end
+end
