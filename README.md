@@ -103,6 +103,7 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting and the protocol secu
 ~~~sh
 ruby -Ilib -Itest -e 'Dir["test/**/*_test.rb"].sort.each { |f| require File.expand_path(f) }'
 gem build digestory.gemspec
-gem install --local digestory-0.1.0.gem --no-document~~~
+gem install --local digestory-0.1.0.gem --no-document
+~~~
 
 The test suite includes RFC/FIPS vectors, compatibility regressions, header-parser security tests, deterministic malformed-input fuzz smoke tests, a local HTTP interoperability server, and optional `curl --digest` interoperability.
