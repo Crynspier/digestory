@@ -121,6 +121,9 @@ module Digestory
       if qop
         raise InvalidHeader, "qop requires nonce-count" unless nc&.match?(/\A[0-9a-fA-F]{8}\z/)
         raise InvalidHeader, "qop requires cnonce" if cnonce.nil? || cnonce.empty?
+        unless cnonce && cnonce.each_byte.all? { |byte| byte >= 0x20 && byte <= 0x7e }
+          raise InvalidHeader, "cnonce must contain only visible ASCII characters"
+        end
         raise UnsupportedQop, "unsupported qop #{qop.inspect}" unless %w[auth auth-int].include?(qop)
       end
     end
