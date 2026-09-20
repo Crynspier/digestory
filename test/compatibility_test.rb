@@ -5,6 +5,12 @@ require "digestory/compat/net_http_digest_auth"
 require "uri"
 
 class CompatibilityTest < Minitest::Test
+  def test_legacy_public_helpers
+    auth = Net::HTTP::DigestAuth.new
+    assert_equal 1, auth.next_nonce
+    assert_match(/\A[\x20-\x7E]+\z/, auth.make_cnonce)
+  end
+
   def test_legacy_api_shape_and_header
     auth = Net::HTTP::DigestAuth.new
     uri = URI("http://Mufasa:#{URI::DEFAULT_PARSER.escape('Circle of Life')}@example.org/dir/index.html")
