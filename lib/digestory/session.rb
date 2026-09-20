@@ -68,6 +68,8 @@ module Digestory
             @current_nonce = selected_challenge.nonce
             @nonce_count = 0
           end
+          raise AuthenticationFailure, "nonce-count exhausted; server must issue a new nonce" if @nonce_count >= 0xffff_ffff
+
           @nonce_count += 1
           nc = format("%08x", @nonce_count)
           generated_cnonce = cnonce || SecureRandom.base64(32)
@@ -159,6 +161,10 @@ module Digestory
           qop: state[:qop],
           response_body: response_body
         )
+        expected_size = Algorithm.digest_size(state[:challenge].algorithm) * 2
+        unless info.rspauth.bytesize == expected_size
+          raise AuthenticationFailure, "Authentication-Info rspauth has the wrong digest length"
+        end
         unless secure_compare(expected, info.rspauth)
           raise AuthenticationFailure, "Authentication-Info rspauth mismatch"
         end
