@@ -97,7 +97,7 @@ module Digestory
 
       params = []
       params << (if @use_username_star && !selected_challenge.userhash && !ascii_only?(@username)
-                   ["username*", rfc5987(@username)]
+                   ["username*", rfc5987(username_for_header)]
                  else
                    ["username", username_value]
                  end)
