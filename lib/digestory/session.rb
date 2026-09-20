@@ -81,7 +81,7 @@ module Digestory
                          Digest.userhash(
                            username: @username,
                            realm: selected_challenge.realm,
-                           algorithm: selected_challenge.algorithm.sub(/-sessz/i, ""),
+                           algorithm: selected_challenge.algorithm.sub(/-sess\z/i, ""),
                            charset: selected_challenge.charset
                          )
                        else
