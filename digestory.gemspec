@@ -12,7 +12,7 @@ Gem::Specification.new do |spec|
   spec.homepage = "https://github.com/Crynspier/digestory"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.3"
-  spec.files = Dir["LICENSE", "README.md", "CHANGELOG.md", "SECURITY.md", "digestory.gemspec", "Rakefile", "lib/**/*", "test/**/*", ".github/workflows/*"]
+  spec.files = ["CHANGELOG.md", "LICENSE", "README.md", "SECURITY.md", "digestory.gemspec", "Rakefile"] + Dir["lib/**/*.rb"]
   spec.require_paths = ["lib"]
   spec.metadata = {
     "homepage_uri" => spec.homepage,
