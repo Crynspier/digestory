@@ -32,9 +32,9 @@ module Digestory
 
       chunks.each do |chunk|
         stripped = chunk.strip
-        if stripped.match?(/\\A[A-Za-z][A-Za-z0-9!#$%&'*+.^_|~-]*\\s+./)
+        if stripped.match?(/\A[A-Za-z][A-Za-z0-9!#$%&'*+.^_|~-]*\s+./)
           flush.call if current
-          scheme, rest = stripped.split(/\\s+/, 2)
+          scheme, rest = stripped.split(/\s+/, 2)
           current_scheme = scheme
           begin
             current = Parameters.parse_parameter_list(rest.to_s)
