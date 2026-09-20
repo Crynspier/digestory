@@ -145,7 +145,7 @@ module Digestory
         raise AuthenticationFailure, "missing rspauth" unless info.rspauth
 
         if state[:qop]
-          unless info.qop == state[:qop] && info.cnonce == state[:cnonce] && info.nc == state[:nc]
+          unless info.qop == state[:qop] && info.cnonce == state[:cnonce] && info.nc.downcase == state[:nc]
             raise AuthenticationFailure, "Authentication-Info request parameters mismatch"
           end
         elsif info.qop
@@ -166,7 +166,7 @@ module Digestory
         unless info.rspauth.bytesize == expected_size
           raise AuthenticationFailure, "Authentication-Info rspauth has the wrong digest length"
         end
-        unless secure_compare(expected, info.rspauth)
+        unless secure_compare(expected, info.rspauth.downcase)
           raise AuthenticationFailure, "Authentication-Info rspauth mismatch"
         end
       end
