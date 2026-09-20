@@ -21,15 +21,20 @@ module Digestory
 
       flush = lambda do
         if current_scheme&.casecmp?("Digest")
-          challenges << new(current)
+          begin
+            challenges << new(current)
+          rescue UnsupportedAlgorithm
+            # RFC 7616 permits clients to ignore Digest challenges that use
+            # algorithms they do not understand and continue negotiation.
+          end
         end
       end
 
       chunks.each do |chunk|
         stripped = chunk.strip
-        if stripped.match?(/\A[A-Za-z][A-Za-z0-9!#$%&'*+.^_|~-]*\s+./)
+        if stripped.match?(/A[A-Za-z][A-Za-z0-9!#$%&'*+.^_|~-]*s+./)
           flush.call if current
-          scheme, rest = stripped.split(/\s+/, 2)
+          scheme, rest = stripped.split(/s+/, 2)
           current_scheme = scheme
           begin
             current = Parameters.parse_parameter_list(rest.to_s)
@@ -48,8 +53,6 @@ module Digestory
 
       flush.call if current
       challenges
-    rescue UnsupportedAlgorithm => e
-      raise InvalidChallenge, e.message
     rescue ParseError => e
       raise InvalidChallenge, e.message
     end
