@@ -35,8 +35,10 @@ jobs:
           tmpdir=$(mktemp -d)
           gem install --local digestory-0.1.0.gem --install-dir "$tmpdir/gems" --no-document
           GEM_HOME="$tmpdir/gems" GEM_PATH="$tmpdir/gems" ruby -e 'require "digestory"; abort unless Digestory::VERSION == "0.1.0"'
+      - name: Configure RubyGems credentials
+        uses: rubygems/configure-rubygems-credentials@v2.1.0
       - name: Publish to RubyGems
-        uses: rubygems/release-gem@v1
+        run: gem push digestory-0.1.0.gem
 
       - name: Create GitHub release
         env:
