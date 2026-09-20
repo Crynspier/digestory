@@ -1,0 +1,32 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '4.0'
+          bundler-cache: false
+      - name: Verify version matches tag
+        run: |
+          expected="\${GITHUB_REF_NAME#v}"
+          actual=$(ruby -Ilib -e 'require "digestory/version"; print Digestory::VERSION')
+          test "$expected" = "$actual"
+      - name: Run tests
+        run: ruby -Ilib -Itest -e 'Dir["test/**/*_test.rb"].sort.each { |f| require File.expand_path(f) }'
+      - name: Build gem
+        run: gem build digestory.gemspec
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" *.gem --generate-notes --verify-tag

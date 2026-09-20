@@ -1,0 +1,8 @@
+/.bundle/
+/.gem/
+/.yardoc/
+/_yardoc/
+/coverage/
+/.ruby-version
+/*.gem
+/pkg/

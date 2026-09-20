@@ -1,0 +1,24 @@
+# frozen_string_literal: true
+
+require_relative "test_helper"
+require "digestory/compat/net_http_digest_auth"
+require "uri"
+
+class CompatibilityTest < Minitest::Test
+  def test_legacy_api_shape_and_header
+    auth = Net::HTTP::DigestAuth.new
+    uri = URI("http://Mufasa:#{URI::DEFAULT_PARSER.escape('Circle of Life')}@example.org/dir/index.html")
+    challenge = 'Digest realm="http-auth@example.org", qop="auth, auth-int", algorithm=SHA-256, nonce="7ypf/xlj9XXwfDPEoM4URrv/xwf94BcCAzFZH4GiTo0v", opaque="FQhe/qaU925kfnzjCev0ciny7QMkPqMAFRtzCUYo5tdS"'
+    header = auth.auth_header(uri, challenge, "GET")
+    assert_equal "Digest", header.split.first
+    assert_includes header, "algorithm=SHA-256"
+    assert_match(/nc=[0-9a-f]{8}/, header)
+  end
+
+  def test_iis_qop_compatibility
+    auth = Net::HTTP::DigestAuth.new
+    uri = URI("http://u:p@example.org/")
+    header = auth.auth_header(uri, 'Digest realm="r", qop="auth", algorithm=MD5, nonce="n"', "GET", true)
+    assert_includes header, 'qop="auth"'
+  end
+end
