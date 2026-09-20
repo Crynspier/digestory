@@ -62,7 +62,7 @@ module Net
 
         header = Digestory::Serializer.authorization(params)
         if iis && qop
-          header = header.sub("qop=#{qop}", "qop=\\"#{qop}\\"")
+          header = header.sub("qop=#{qop}", 'qop="' + qop + '"')
         end
         header
       end
