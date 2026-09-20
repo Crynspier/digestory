@@ -9,6 +9,7 @@ class SessionTest < Minitest::Test
     first = session.authorize(challenge: challenge, method: "GET", uri: "/")
     second = session.authorize(challenge: challenge, method: "GET", uri: "/")
     assert_includes first, "nc=00000001"
+    refute_respond_to session, :password
     assert_includes second, "nc=00000002"
   end
 
