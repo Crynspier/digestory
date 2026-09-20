@@ -36,14 +36,21 @@ module Digestory
           flush.call if current
           scheme, rest = stripped.split(/\s+/, 2)
           current_scheme = scheme
-          begin
-            current = Parameters.parse_parameter_list(rest.to_s)
-          rescue ParseError => e
-            raise InvalidChallenge, e.message
+          if scheme.casecmp?("Digest")
+            begin
+              current = Parameters.parse_parameter_list(rest.to_s)
+            rescue ParseError => e
+              raise InvalidChallenge, e.message
+            end
+          else
+            current = nil
           end
           next
         end
 
+        if current.nil? && current_scheme && !current_scheme.casecmp?("Digest")
+          next
+        end
         raise InvalidChallenge, "parameter found before authentication scheme" unless current
         key, value = Parameters.split_assignment(stripped)
         canonical = key.downcase
