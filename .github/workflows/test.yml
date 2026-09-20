@@ -24,6 +24,8 @@ jobs:
         run: ruby -Ilib -Itest -e 'Dir["test/**/*_test.rb"].sort.each { |f| require File.expand_path(f) }'
       - name: Build gem
         run: gem build digestory.gemspec
+      - name: Validate gem
+        run: gem check digestory-0.1.0.gem
       - name: Fresh consumer test
         run: |
           tmpdir=$(mktemp -d)
