@@ -119,7 +119,7 @@ module Digestory
 
     def validate_qop_inputs(qop:, nc:, cnonce:)
       if qop
-        raise InvalidHeader, "qop requires nonce-count" unless nc&.match?(/\\A[0-9a-fA-F]{8}\\z/)
+        raise InvalidHeader, "qop requires nonce-count" unless nc&.match?(/\A[0-9a-fA-F]{8}\z/)
         raise InvalidHeader, "qop requires cnonce" if cnonce.nil? || cnonce.empty?
         raise UnsupportedQop, "unsupported qop #{qop.inspect}" unless %w[auth auth-int].include?(qop)
       end
