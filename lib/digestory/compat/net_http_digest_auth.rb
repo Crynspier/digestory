@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-require "cgi"
 require "net/http"
 require "uri"
+require "cgi"
 require "digestory"
 
 module Net
@@ -13,19 +13,24 @@ module Net
 
       def initialize(_ignored = :ignored)
         @nonce_count = -1
+        @current_nonce = nil
         @mutex = Mutex.new
       end
 
       def auth_header(uri, www_authenticate, method, iis = false)
         parsed_uri = uri.is_a?(URI) ? uri : URI.parse(uri.to_s)
-        username = CGI.unescape(parsed_uri.user.to_s)
-        password = CGI.unescape(parsed_uri.password.to_s)
+        username = URI::DEFAULT_PARSER.unescape(parsed_uri.user.to_s)
+        password = URI::DEFAULT_PARSER.unescape(parsed_uri.password.to_s)
         raise Digestory::MissingCredential, "URI must contain username and password" if username.empty? && parsed_uri.user.nil?
 
         challenge = Digestory::Challenge.parse(www_authenticate)
         qop = challenge.choose_qop(preference: %w[auth], allow_legacy_no_qop: true)
         nonce_count, cnonce = @mutex.synchronize do
           if qop || Digestory::Algorithm.sess?(challenge.algorithm)
+            if @current_nonce != challenge.nonce
+              @current_nonce = challenge.nonce
+              @nonce_count = -1
+            end
             @nonce_count += 1
             [format("%08x", @nonce_count), SecureRandom.base64(32)]
           else
@@ -50,7 +55,7 @@ module Net
           ["realm", challenge.realm],
           ["algorithm", challenge.algorithm],
           ["uri", parsed_uri.request_uri],
-          ["nonce", challenge.nonce],
+          ["nonce", challenge.nonce]
         ]
         if qop || Digestory::Algorithm.sess?(challenge.algorithm)
           params << ["nc", nonce_count]
