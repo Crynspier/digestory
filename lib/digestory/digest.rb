@@ -57,12 +57,17 @@ module Digestory
     end
 
     def userhash(username:, realm:, algorithm:, charset:)
-      hash(algorithm, encode("#{username}:#{realm}", charset))
+      username_bytes = encode_credential(username, charset)
+      realm_bytes = realm.encode(Encoding::BINARY)
+      hash(algorithm, username_bytes + ":".b + realm_bytes)
     end
 
     def ha1(algorithm:, username:, realm:, password:, nonce:, cnonce:, charset:)
-      credentials = "#{username}:#{realm}:#{password}"
-      base = hash(algorithm, encode(credentials, charset))
+      username_bytes = encode_credential(username, charset)
+      password_bytes = encode_credential(password, charset)
+      realm_bytes = realm.encode(Encoding::BINARY)
+      credentials = username_bytes + ":".b + realm_bytes + ":".b + password_bytes
+      base = hash(algorithm, credentials)
       if Algorithm.sess?(algorithm)
         hash(algorithm, "#{base}:#{nonce}:#{cnonce}")
       else
@@ -86,7 +91,7 @@ module Digestory
       Algorithm.digest(algorithm, data)
     end
 
-    def encode(value, charset)
+    def encode_credential(value, charset)
       case charset
       when :utf_8
         value.unicode_normalize(:nfc).encode(Encoding::UTF_8).dup.force_encoding(Encoding::BINARY)
@@ -97,6 +102,19 @@ module Digestory
       end
     rescue EncodingError => e
       raise InvalidHeader, "credentials cannot be represented in #{charset}: #{e.message}"
+    end
+
+    def encode(value, charset)
+      case charset
+      when :utf_8
+        value.encode(Encoding::UTF_8).dup.force_encoding(Encoding::BINARY)
+      when :iso_8859_1
+        value.encode(Encoding::ISO_8859_1).dup.force_encoding(Encoding::BINARY)
+      else
+        raise InvalidChallenge, "unsupported character set #{charset.inspect}"
+      end
+    rescue EncodingError => e
+      raise InvalidHeader, "value cannot be represented in #{charset}: #{e.message}"
     end
 
     def validate_qop_inputs(qop:, nc:, cnonce:)
