@@ -46,3 +46,13 @@ class ChallengeNegotiationTest < Minitest::Test
     assert_equal "good", challenges.first.realm
   end
 end
+
+
+class MixedAuthenticationSchemeTest < Minitest::Test
+  def test_ignores_basic_token68_before_digest
+    challenges = Digestory::Challenge.parse_all(
+      'Basic abc123, Digest realm="good", nonce="n", algorithm=SHA-256, qop="auth"'
+    )
+    assert_equal ["good"], challenges.map(&:realm)
+  end
+end
