@@ -34,3 +34,18 @@ class AuthenticationInfoSecurityTest < Minitest::Test
     end
   end
 end
+
+
+class AuthenticationInfoContextTest < Minitest::Test
+  def test_rejects_qop_without_request_context
+    assert_raises(Digestory::InvalidAuthenticationInfo) do
+      Digestory::AuthenticationInfo.parse('qop=auth')
+    end
+  end
+
+  def test_rejects_request_context_without_qop
+    assert_raises(Digestory::InvalidAuthenticationInfo) do
+      Digestory::AuthenticationInfo.parse('cnonce="c", nc=00000001')
+    end
+  end
+end
