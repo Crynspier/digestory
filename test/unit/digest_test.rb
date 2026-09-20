@@ -84,6 +84,15 @@ class DigestTest < Minitest::Test
     refute_equal auth, no_auth_int
   end
 
+  def test_utf8_credentials_are_nfc_normalized
+    challenge = Digestory::Challenge.parse('Digest realm="r", qop="auth", algorithm=SHA-256, nonce="n", charset=UTF-8')
+    composed = "é"
+    decomposed = "é"
+    composed_hash = Digestory::Digest.userhash(username: composed, realm: challenge.realm, algorithm: challenge.algorithm, charset: challenge.charset)
+    decomposed_hash = Digestory::Digest.userhash(username: decomposed, realm: challenge.realm, algorithm: challenge.algorithm, charset: challenge.charset)
+    assert_equal composed_hash, decomposed_hash
+  end
+
   def test_sess_algorithm
     challenge = Digestory::Challenge.parse('Digest realm="r", qop="auth", algorithm=SHA-256-sess, nonce="n"')
     result = Digestory::Digest.response(
