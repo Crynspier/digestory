@@ -25,3 +25,12 @@ class HeaderSecurityTest < Minitest::Test
     end
   end
 end
+
+
+class AuthenticationInfoSecurityTest < Minitest::Test
+  def test_rejects_non_hex_rspauth
+    assert_raises(Digestory::InvalidAuthenticationInfo) do
+      Digestory::AuthenticationInfo.parse('rspauth="not-a-digest!"')
+    end
+  end
+end
