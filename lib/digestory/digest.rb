@@ -6,7 +6,7 @@ module Digestory
 
     def response(challenge:, username:, password:, method:, uri:, nc:, cnonce:, qop:, entity_body: nil)
       algorithm = challenge.algorithm
-      validate_qop_inputs(qop: qop, nc: nc, cnonce: cnonce)
+      validate_qop_inputs(qop: qop, nc: nc, cnonce: cnonce, algorithm: algorithm)
       ha1 = ha1(
         algorithm: algorithm,
         username: username,
