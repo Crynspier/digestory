@@ -36,3 +36,13 @@ class ChallengeTest < Minitest::Test
     assert_equal ["d"], Digestory::Challenge.parse_all(header).map(&:realm)
   end
 end
+
+
+class ChallengeNegotiationTest < Minitest::Test
+  def test_ignores_unsupported_digest_algorithm
+    header = 'Digest realm="bad", nonce="bad", algorithm=SHA-1, qop="auth", Digest realm="good", nonce="good", algorithm=SHA-256, qop="auth"'
+    challenges = Digestory::Challenge.parse_all(header)
+    assert_equal ["SHA-256"], challenges.map(&:algorithm)
+    assert_equal "good", challenges.first.realm
+  end
+end
