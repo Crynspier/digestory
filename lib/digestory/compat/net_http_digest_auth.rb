@@ -13,9 +13,19 @@ module Net
       VERSION = Digestory::VERSION
 
       def initialize(_ignored = :ignored)
-        @nonce_count = -1
+        @nonce_count = 0
         @current_nonce = nil
         @mutex = Mutex.new
+      end
+
+      def make_cnonce
+        SecureRandom.base64(32)
+      end
+
+      def next_nonce
+        @mutex.synchronize do
+          @nonce_count += 1
+        end
       end
 
       def auth_header(uri, www_authenticate, method, iis = false)
@@ -30,10 +40,10 @@ module Net
           if qop || Digestory::Algorithm.sess?(challenge.algorithm)
             if @current_nonce != challenge.nonce
               @current_nonce = challenge.nonce
-              @nonce_count = -1
+              @nonce_count = 0
             end
             @nonce_count += 1
-            [format("%08x", @nonce_count), SecureRandom.base64(32)]
+            [format("%08x", @nonce_count), make_cnonce]
           else
             [nil, nil]
           end
