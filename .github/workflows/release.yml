@@ -30,6 +30,11 @@ jobs:
         run: ruby -Ilib -Itest -e 'Dir["test/**/*_test.rb"].sort.each { |f| require File.expand_path(f) }'
       - name: Build gem
         run: gem build digestory.gemspec
+      - name: Fresh consumer test
+        run: |
+          tmpdir=$(mktemp -d)
+          gem install --local digestory-0.1.0.gem --install-dir "$tmpdir/gems" --no-document
+          GEM_HOME="$tmpdir/gems" GEM_PATH="$tmpdir/gems" ruby -e 'require "digestory"; abort unless Digestory::VERSION == "0.1.0"'
       - name: Publish to RubyGems
         uses: rubygems/release-gem@v1
 
