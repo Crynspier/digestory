@@ -12,8 +12,8 @@ module Digestory
       "MD5-SESS" => { canonical: "MD5-sess", openssl: "MD5", size: 16 },
       "SHA-256" => { canonical: "SHA-256", openssl: "SHA256", size: 32 },
       "SHA-256-SESS" => { canonical: "SHA-256-sess", openssl: "SHA256", size: 32 },
-      "SHA-512-256" => { canonical: "SHA-512-256", openssl: "SHA512", size: 32 },
-      "SHA-512-256-SESS" => { canonical: "SHA-512-256-sess", openssl: "SHA512", size: 32 }
+      "SHA-512-256" => { canonical: "SHA-512-256", openssl: "SHA512-256", size: 32 },
+      "SHA-512-256-SESS" => { canonical: "SHA-512-256-sess", openssl: "SHA512-256", size: 32 }
     }.freeze
 
     def normalize(name)
@@ -31,8 +31,7 @@ module Digestory
     def digest(name, data)
       normalized = normalize(name)
       spec = SPECS.fetch(normalized.upcase)
-      digest = OpenSSL::Digest.new(spec[:openssl]).hexdigest(data)
-      normalized.start_with?("SHA-512-256") ? digest[0, 64] : digest
+      OpenSSL::Digest.new(spec[:openssl]).hexdigest(data)
     end
 
     def digest_size(name)
