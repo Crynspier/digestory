@@ -14,6 +14,7 @@ module Digestory
                    allow_legacy_no_qop: false, use_username_star: false)
       @username = username.to_s
       @password = password.to_s
+      raise InvalidHeader, "username cannot contain colon" if @username.include?(":")
       @qop_preference = qop_preference.map { |q| q.to_s.downcase }.freeze
       @prefer_stronger_algorithm = prefer_stronger_algorithm
       @allow_legacy_no_qop = allow_legacy_no_qop
