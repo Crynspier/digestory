@@ -17,6 +17,8 @@ rake package
 
 The integration suite may use the locally installed `curl` command when available.
 
+Before a release, the complete GitHub Actions matrix and the release artifact build should be green.
+
 ## Pull requests
 
 Keep pull requests narrow. Describe:
