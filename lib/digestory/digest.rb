@@ -89,7 +89,7 @@ module Digestory
     def encode(value, charset)
       case charset
       when :utf_8
-        value.encode(Encoding::UTF_8).dup.force_encoding(Encoding::BINARY)
+        value.unicode_normalize(:nfc).encode(Encoding::UTF_8).dup.force_encoding(Encoding::BINARY)
       when :iso_8859_1
         value.encode(Encoding::ISO_8859_1).dup.force_encoding(Encoding::BINARY)
       else
