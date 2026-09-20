@@ -37,13 +37,17 @@ class DigestTest < Minitest::Test
     assert_equal "8ca523f5e9506fed4657c9700eebdbec", result
   end
 
-  def test_sha512_256_userhash_vector
+  def test_sha512_256_uses_standard_fips_variant
+    assert_equal "53048e2681941ef99b2e29b76b4c7dabe4c2d0c634fc6d46e0e2f13107e7af23", Digestory::Algorithm.digest("SHA-512-256", "abc")
+  end
+
+  def test_sha512_256_rfc_example_uses_standard_variant
     challenge = Digestory::Challenge.parse(<<~HEADER.gsub("\n", ""))
       Digest realm="api@example.org", qop="auth", algorithm=SHA-512-256,
       nonce="5TsQWLVdgBdmrQ0XsxbDODV+57QdFR34I9HAbC/RVvkK", opaque="HRPCssKJSGjCrkzDg8OhwpzCiGPChXYjwrI2QmXDnsOS", charset=UTF-8, userhash=true
     HEADER
     username = "Jäsøn Doe"
-    assert_equal "488869477bf257147b804c45308cd62ac4e25eb717b12b298c79e62dcea254ec", Digestory::Digest.userhash(username: username, realm: challenge.realm, algorithm: challenge.algorithm, charset: challenge.charset)
+    assert_equal "793263caabb707a56211940d90411ea4a575adeccb7e360aeb624ed06ece9b0b", Digestory::Digest.userhash(username: username, realm: challenge.realm, algorithm: challenge.algorithm, charset: challenge.charset)
     result = Digestory::Digest.response(
       challenge: challenge,
       username: username,
@@ -54,7 +58,7 @@ class DigestTest < Minitest::Test
       cnonce: "NTg6RKcb9boFIAS3KrFK9BGeh+iDa/sm6jUMp2wds69v",
       qop: "auth"
     )
-    assert_equal "ae66e67d6b427bd3f120414a82e4acff38e8ecd9101d6c861229025f607a79dd", result
+    assert_equal "3798d4131c277846293534c3edc11bd8a5e4cdcbff78b05db9d95eeb1cec68a5", result
   end
 
   def test_auth_int_includes_entity_body
