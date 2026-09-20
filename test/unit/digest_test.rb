@@ -112,3 +112,22 @@ class DigestTest < Minitest::Test
     assert_equal 64, result.length
   end
 end
+
+
+class DigestInputValidationTest < Minitest::Test
+  def test_sess_algorithm_requires_cnonce
+    challenge = Digestory::Challenge.parse('Digest realm="r", nonce="n", algorithm=SHA-256-sess, qop="auth"')
+    assert_raises(Digestory::InvalidHeader) do
+      Digestory::Digest.response(
+        challenge: challenge,
+        username: "u",
+        password: "p",
+        method: "GET",
+        uri: "/",
+        nc: "00000001",
+        cnonce: nil,
+        qop: "auth"
+      )
+    end
+  end
+end
