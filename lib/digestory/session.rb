@@ -20,6 +20,7 @@ module Digestory
       @use_username_star = use_username_star
       @mutex = Mutex.new
       @nonce_count = 0
+      @current_nonce = nil
       @last = nil
     end
 
@@ -55,6 +56,10 @@ module Digestory
       nc = nil
       @mutex.synchronize do
         if qop_value || Algorithm.sess?(selected_challenge.algorithm)
+          if @current_nonce != selected_challenge.nonce
+            @current_nonce = selected_challenge.nonce
+            @nonce_count = 0
+          end
           @nonce_count += 1
           nc = format("%08x", @nonce_count)
           generated_cnonce = cnonce || SecureRandom.base64(32)
@@ -77,6 +82,8 @@ module Digestory
         entity_body: entity_body
       )
 
+      username_for_header = selected_challenge.charset == :utf_8 ? @username.unicode_normalize(:nfc) : @username
+
       username_value = if selected_challenge.userhash
                          Digest.userhash(
                            username: @username,
@@ -85,7 +92,7 @@ module Digestory
                            charset: selected_challenge.charset
                          )
                        else
-                         @username
+                         username_for_header
                        end
 
       params = []
