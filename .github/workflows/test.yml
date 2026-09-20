@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: digestory-test-${{ github.ref }}
+  group: digestory-test-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
