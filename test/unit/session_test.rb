@@ -21,6 +21,22 @@ class SessionTest < Minitest::Test
     assert_includes header, 'nonce="s"'
   end
 
+  def test_nonce_count_restarts_when_server_nonce_changes
+    session = Digestory::Session.new(username: "u", password: "p")
+    first = session.authorize(
+      challenge: 'Digest realm="r", qop="auth", algorithm=SHA-256, nonce="one"',
+      method: "GET",
+      uri: "/"
+    )
+    second = session.authorize(
+      challenge: 'Digest realm="r", qop="auth", algorithm=SHA-256, nonce="two"',
+      method: "GET",
+      uri: "/"
+    )
+    assert_includes first, "nc=00000001"
+    assert_includes second, "nc=00000001"
+  end
+
   def test_userhash_authorization
     session = Digestory::Session.new(username: "Jäsøn Doe", password: "Secret")
     challenge = 'Digest realm="r", qop="auth", algorithm=SHA-256, nonce="n", charset=UTF-8, userhash=true'
