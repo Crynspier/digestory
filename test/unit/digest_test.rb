@@ -131,3 +131,22 @@ class DigestInputValidationTest < Minitest::Test
     end
   end
 end
+
+
+class CnonceValidationTest < Minitest::Test
+  def test_rejects_non_ascii_cnonce
+    challenge = Digestory::Challenge.parse('Digest realm="r", nonce="n", algorithm=SHA-256, qop="auth"')
+    assert_raises(Digestory::InvalidHeader) do
+      Digestory::Digest.response(
+        challenge: challenge,
+        username: "u",
+        password: "p",
+        method: "GET",
+        uri: "/",
+        nc: "00000001",
+        cnonce: "café",
+        qop: "auth"
+      )
+    end
+  end
+end

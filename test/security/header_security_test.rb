@@ -49,3 +49,12 @@ class AuthenticationInfoContextTest < Minitest::Test
     end
   end
 end
+
+
+class SerializerSecurityTest < Minitest::Test
+  def test_rejects_control_character_in_username_star
+    assert_raises(Digestory::InvalidHeader) do
+      Digestory::Serializer.authorization([["username*", "UTF-8''a\r\nb"]])
+    end
+  end
+end

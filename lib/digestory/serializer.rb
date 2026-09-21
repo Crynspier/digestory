@@ -10,6 +10,9 @@ module Digestory
       pairs = params.map do |key, value|
         raise InvalidHeader, "nil header value for #{key}" if value.nil?
         if key == "username*"
+          unless value.ascii_only? && value.each_byte.none? { |byte| byte < 0x20 || byte == 0x7f }
+            raise InvalidHeader, "invalid username* header value"
+          end
           "username*=#{value}"
         elsif QUOTED.include?(key)
           "#{key}=#{Parameters.quote(value)}"

@@ -107,3 +107,5 @@ gem install --local digestory-0.1.0.gem --no-document
 ~~~
 
 The test suite includes RFC/FIPS vectors, compatibility regressions, header-parser security tests, deterministic malformed-input fuzz smoke tests, a local HTTP interoperability server, and optional `curl --digest` interoperability.
+
+A `Session` tracks the most recent authenticated request for optional `Authentication-Info` verification. Do not share one Session between concurrent in-flight requests when using `verify: true`; use a separate session state for each independently tracked authentication exchange.

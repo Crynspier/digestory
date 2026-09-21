@@ -14,6 +14,7 @@ module Digestory
                    allow_legacy_no_qop: false, use_username_star: false)
       @username = username.to_s
       @password = password.to_s
+      raise InvalidHeader, "username cannot contain colon" if @username.include?(":")
       @qop_preference = qop_preference.map { |q| q.to_s.downcase }.freeze
       @prefer_stronger_algorithm = prefer_stronger_algorithm
       @allow_legacy_no_qop = allow_legacy_no_qop
@@ -94,7 +95,7 @@ module Digestory
                          Digest.userhash(
                            username: @username,
                            realm: selected_challenge.realm,
-                           algorithm: selected_challenge.algorithm.sub(/-sessz/i, ""),
+                           algorithm: selected_challenge.algorithm.sub(/-sess\z/i, ""),
                            charset: selected_challenge.charset
                          )
                        else
@@ -144,7 +145,7 @@ module Digestory
         raise AuthenticationFailure, "missing rspauth" unless info.rspauth
 
         if state[:qop]
-          unless info.qop == state[:qop] && info.cnonce == state[:cnonce] && info.nc == state[:nc]
+          unless info.qop == state[:qop] && info.cnonce == state[:cnonce] && info.nc.downcase == state[:nc]
             raise AuthenticationFailure, "Authentication-Info request parameters mismatch"
           end
         elsif info.qop
@@ -165,7 +166,7 @@ module Digestory
         unless info.rspauth.bytesize == expected_size
           raise AuthenticationFailure, "Authentication-Info rspauth has the wrong digest length"
         end
-        unless secure_compare(expected, info.rspauth)
+        unless secure_compare(expected, info.rspauth.downcase)
           raise AuthenticationFailure, "Authentication-Info rspauth mismatch"
         end
       end

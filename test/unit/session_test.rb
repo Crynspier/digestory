@@ -130,6 +130,27 @@ class SessionNonceLimitTest < Minitest::Test
     end
   end
 
+  def test_accepts_valid_uppercase_authentication_info_hex
+    session = Digestory::Session.new(username: "u", password: "p")
+    session.authorize(
+      challenge: 'Digest realm="r", nonce="n", algorithm=SHA-256, qop="auth"',
+      method: "GET",
+      uri: "/"
+    )
+    state = session.instance_variable_get(:@last)
+    expected = Digestory::Digest.rspauth(
+      challenge: state[:challenge],
+      username: "u",
+      password: "p",
+      request_uri: "/",
+      nc: state[:nc],
+      cnonce: state[:cnonce],
+      qop: "auth"
+    ).upcase
+    info = 'qop=auth, cnonce="' + state[:cnonce] + '", nc=' + state[:nc].upcase + ', rspauth="' + expected + '"'
+    session.update_authentication_info(info, verify: true)
+  end
+
   def test_rejects_wrong_rspauth_length
     session = Digestory::Session.new(username: "u", password: "p")
     session.authorize(
@@ -139,6 +160,15 @@ class SessionNonceLimitTest < Minitest::Test
     )
     assert_raises(Digestory::AuthenticationFailure) do
       session.update_authentication_info('qop=auth, cnonce="' + session.instance_variable_get(:@last)[:cnonce] + '", nc=00000001, rspauth="00"', verify: true)
+    end
+  end
+end
+
+
+class SessionCredentialValidationTest < Minitest::Test
+  def test_rejects_username_with_colon
+    assert_raises(Digestory::InvalidHeader) do
+      Digestory::Session.new(username: "u:v", password: "p")
     end
   end
 end

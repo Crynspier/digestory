@@ -33,7 +33,7 @@ module Digestory
 
     def rspauth(challenge:, username:, password:, request_uri:, nc:, cnonce:, qop:, response_body: nil)
       algorithm = challenge.algorithm
-      validate_qop_inputs(qop: qop, nc: nc, cnonce: cnonce)
+      validate_qop_inputs(qop: qop, nc: nc, cnonce: cnonce, algorithm: algorithm)
       ha1 = ha1(
         algorithm: algorithm,
         username: username,
@@ -117,11 +117,17 @@ module Digestory
       raise InvalidHeader, "value cannot be represented in #{charset}: #{e.message}"
     end
 
-    def validate_qop_inputs(qop:, nc:, cnonce:)
+    def validate_qop_inputs(qop:, nc:, cnonce:, algorithm: nil)
       if qop
-        raise InvalidHeader, "qop requires nonce-count" unless nc&.match?(/A[0-9a-fA-F]{8}z/)
+        raise InvalidHeader, "qop requires nonce-count" unless nc&.match?(/\A[0-9a-fA-F]{8}\z/)
         raise InvalidHeader, "qop requires cnonce" if cnonce.nil? || cnonce.empty?
+        unless cnonce && cnonce.each_byte.all? { |byte| byte >= 0x20 && byte <= 0x7e }
+          raise InvalidHeader, "cnonce must contain only visible ASCII characters"
+        end
         raise UnsupportedQop, "unsupported qop #{qop.inspect}" unless %w[auth auth-int].include?(qop)
+      end
+      if algorithm && Algorithm.sess?(algorithm) && (cnonce.nil? || cnonce.empty?)
+        raise InvalidHeader, "session algorithm requires cnonce"
       end
     end
 
