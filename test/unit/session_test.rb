@@ -263,3 +263,33 @@ class SessionProtectionSpaceTest < Minitest::Test
     assert_includes header, 'uri="/private/report"'
   end
 end
+
+
+class SessionAuthIntVerificationTest < Minitest::Test
+  def test_verifies_auth_int_with_precomputed_response_digest
+    session = Digestory::Session.new(username: "u", password: "p")
+    context = session.authorize_with_context(
+      challenge: 'Digest realm="r", qop="auth-int", algorithm=SHA-256, nonce="n"',
+      method: "POST",
+      uri: "/",
+      entity_body: "request"
+    )
+    response_body = "response"
+    response_digest = Digestory::Algorithm.digest("SHA-256", response_body)
+    rspauth = Digestory::Digest.rspauth(
+      challenge: context.challenge,
+      username: context.username,
+      password: "p",
+      request_uri: context.request_uri,
+      nc: context.nc,
+      cnonce: context.cnonce,
+      qop: context.qop,
+      entity_digest: response_digest
+    )
+    session.verify_authentication_info(
+      context,
+      'qop=auth-int, rspauth="' + rspauth + '", cnonce="' + context.cnonce + '", nc=' + context.nc,
+      response_digest: response_digest
+    )
+  end
+end
