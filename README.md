@@ -148,7 +148,7 @@ For a replayable IO, Digestory temporarily reads and restores the original posit
 For large or non-replayable bodies, provide the already-computed digest:
 
 ~~~ruby
-entity_digest = Digestory::Algorithm.digest("SHA-256", body_bytes)
+entity_digest = Digestory::Algorithm.digest("SHA-256", "contents of body")
 
 context = session.authorize_with_context(
   challenge: challenge,
