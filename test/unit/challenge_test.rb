@@ -63,8 +63,8 @@ class ChallengeProtectionSpaceTest < Minitest::Test
     challenge = Digestory::Challenge.parse(
       'Digest realm="r", domain="/private /api/v1", nonce="n", algorithm=SHA-256, qop="auth"'
     )
-    assert challenge.protects?("/private/report")
-    assert challenge.protects?("/api/v1/items")
+    assert challenge.protects?("/private/report", base_uri: "https://example.org")
+    assert challenge.protects?("/api/v1/items", base_uri: "https://example.org")
     refute challenge.protects?("/public")
   end
 
