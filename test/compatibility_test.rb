@@ -53,3 +53,32 @@ class CompatibilityCredentialValidationTest < Minitest::Test
     end
   end
 end
+
+
+class CompatibilityAuthIntTest < Minitest::Test
+  def test_can_opt_into_auth_int
+    auth = Net::HTTP::DigestAuth.new
+    uri = URI("http://u:p@example.org/upload")
+    header = auth.auth_header(
+      uri,
+      'Digest realm="r", qop="auth-int", algorithm=SHA-256, nonce="n"',
+      "POST",
+      false,
+      entity_body: "hello",
+      qop: "auth-int"
+    )
+    assert_includes header, "qop=auth-int"
+    assert_match(/nc=[0-9a-f]{8}/, header)
+  end
+
+  def test_legacy_adapter_ignores_auth_int_when_auth_is_available
+    auth = Net::HTTP::DigestAuth.new
+    uri = URI("http://u:p@example.org/")
+    header = auth.auth_header(
+      uri,
+      'Digest realm="r", qop="auth, auth-int", algorithm=SHA-256, nonce="n"',
+      "GET"
+    )
+    assert_includes header, "qop=auth"
+  end
+end
