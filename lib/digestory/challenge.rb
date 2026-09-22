@@ -145,7 +145,7 @@ module Digestory
     def parse_domain(value)
       return [] if value.nil? || value.empty?
 
-      Parameters.parse_list(value).each do |entry|
+      value.split(/\s+/).reject(&:empty?).each do |entry|
         parsed = URI.parse(entry)
         unless parsed.absolute? || entry.start_with?("/")
           raise InvalidChallenge, "invalid domain URI #{entry.inspect}"
