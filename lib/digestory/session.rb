@@ -6,12 +6,14 @@ require "uri"
 module Digestory
   class Session
     DEFAULT_QOP_PREFERENCE = %w[auth auth-int].freeze
+    DEFAULT_MAX_NONCE_STATES = 1024
     MAX_NONCE_COUNT = 0xffff_ffff
 
     attr_reader :username, :nonce_count
 
     def initialize(username:, password:, qop_preference: DEFAULT_QOP_PREFERENCE, prefer_stronger_algorithm: true,
-                   allow_legacy_no_qop: false, use_username_star: false, enforce_domain: false)
+                   allow_legacy_no_qop: false, use_username_star: false, enforce_domain: false,
+                   max_nonce_states: DEFAULT_MAX_NONCE_STATES)
       @username = username.to_s
       @password = password.to_s
       raise InvalidHeader, "username cannot contain colon" if @username.include?(":")
@@ -20,8 +22,11 @@ module Digestory
       @allow_legacy_no_qop = allow_legacy_no_qop
       @use_username_star = use_username_star
       @enforce_domain = enforce_domain
+      @max_nonce_states = Integer(max_nonce_states)
+      raise ArgumentError, "max_nonce_states must be positive" if @max_nonce_states <= 0
+
       @mutex = Mutex.new
-      @nonce_counts = Hash.new(0)
+      @nonce_counts = {}
       @nonce_count = 0
       @next_nonce = nil
       @next_nonce_key = nil
@@ -158,7 +163,15 @@ module Digestory
       if qop_value || Algorithm.sess?(selected_challenge.algorithm)
         nonce_key = nonce_state_key(selected_challenge, request_target)
         @mutex.synchronize do
-          current = @nonce_counts[nonce_key]
+          unless @nonce_counts.key?(nonce_key)
+            if @nonce_counts.length >= @max_nonce_states
+              raise AuthenticationFailure,
+                    "nonce-state limit reached; create a new session or increase max_nonce_states"
+            end
+            @nonce_counts[nonce_key] = 0
+          end
+
+          current = @nonce_counts.fetch(nonce_key)
           raise AuthenticationFailure, "nonce-count exhausted; server must issue a new nonce" if current >= MAX_NONCE_COUNT
 
           current += 1
@@ -261,7 +274,12 @@ module Digestory
       raise UnsupportedQop, "no Digest challenge supports the requested qop and policy" if usable.empty?
       return usable.first unless @prefer_stronger_algorithm
 
-      usable.max_by { |item| Algorithm.secure_rank(item.algorithm) }
+      # A server can advertise distinct protection spaces in one challenge
+      # header. Preserve the first usable protection space, then prefer the
+      # strongest supported algorithm within that space.
+      protection_space = usable.first.protection_space_key
+      candidates = usable.select { |item| item.protection_space_key == protection_space }
+      candidates.max_by { |item| Algorithm.secure_rank(item.algorithm) }
     end
 
     def verify_authentication_info!(state, info, response_body:, response_digest:)
@@ -314,14 +332,15 @@ module Digestory
       return uri.request_uri if uri.is_a?(URI)
 
       value = uri.to_s
+      raise InvalidHeader, "request URI cannot be empty" if value.empty?
       return value if value == "*" || value.start_with?("/")
 
       parsed = URI.parse(value)
       return value if parsed.absolute?
 
       "/#{value}"
-    rescue URI::InvalidURIError
-      "/#{value}"
+    rescue URI::InvalidURIError => e
+      raise InvalidHeader, "invalid request URI #{value.inspect}: #{e.message}"
     end
 
     def absolute_base_uri(uri)
@@ -330,8 +349,8 @@ module Digestory
       value = uri.to_s
       parsed = URI.parse(value)
       parsed if parsed.absolute?
-    rescue URI::InvalidURIError
-      nil
+    rescue URI::InvalidURIError => e
+      raise InvalidHeader, "invalid base URI #{value.inspect}: #{e.message}" 
     end
 
     def ascii_only?(value)
