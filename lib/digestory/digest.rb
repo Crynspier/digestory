@@ -5,6 +5,7 @@ module Digestory
     module_function
 
     def response(challenge:, username:, password:, method:, uri:, nc:, cnonce:, qop:, entity_body: nil, entity_digest: nil)
+      reject_ambiguous_entity_input!(qop: qop, entity_body: entity_body, entity_digest: entity_digest)
       algorithm = challenge.algorithm
       validate_qop_inputs(qop: qop, nc: nc, cnonce: cnonce, algorithm: algorithm, entity_digest: entity_digest)
       ha1 = ha1(
@@ -33,6 +34,7 @@ module Digestory
     end
 
     def rspauth(challenge:, username:, password:, request_uri:, nc:, cnonce:, qop:, response_body: nil, entity_digest: nil)
+      reject_ambiguous_entity_input!(qop: qop, entity_body: response_body, entity_digest: entity_digest)
       algorithm = challenge.algorithm
       validate_qop_inputs(qop: qop, nc: nc, cnonce: cnonce, algorithm: algorithm, entity_digest: entity_digest)
       ha1 = ha1(
@@ -121,6 +123,12 @@ module Digestory
       end
     rescue EncodingError => e
       raise InvalidHeader, "value cannot be represented in #{charset}: #{e.message}"
+    end
+
+    def reject_ambiguous_entity_input!(qop:, entity_body:, entity_digest:)
+      return unless qop == "auth-int" && !entity_body.nil? && !entity_digest.nil?
+
+      raise InvalidEntityBody, "provide entity_body or entity_digest, not both"
     end
 
     def validate_qop_inputs(qop:, nc:, cnonce:, algorithm: nil, entity_digest: nil)
