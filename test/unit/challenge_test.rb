@@ -89,6 +89,20 @@ class ChallengeProtectionSpaceTest < Minitest::Test
     )
     assert challenge.protects?("/private/report", base_uri: "https://example.org")
   end
+
+  def test_rejects_relative_target_without_an_origin_for_enforcement
+    challenge = Digestory::Challenge.parse(
+      'Digest realm="r", domain="/private", nonce="n", algorithm=SHA-256, qop="auth"'
+    )
+    refute challenge.protects?("/private/report")
+  end
+
+  def test_accepts_absolute_target_for_relative_domain
+    challenge = Digestory::Challenge.parse(
+      'Digest realm="r", domain="/private", nonce="n", algorithm=SHA-256, qop="auth"'
+    )
+    assert challenge.protects?("https://example.org/private/report")
+  end
 end
 
 
