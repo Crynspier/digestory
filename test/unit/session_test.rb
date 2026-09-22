@@ -277,6 +277,75 @@ class SessionProtectionSpaceTest < Minitest::Test
     )
     assert_includes header, 'uri="/private/report"'
   end
+
+  def test_domain_enforcement_fails_closed_without_an_origin
+    session = Digestory::Session.new(username: "u", password: "p", enforce_domain: true)
+    assert_raises(Digestory::InvalidChallenge) do
+      session.authorize(
+        challenge: 'Digest realm="r", domain="/private", nonce="n", algorithm=SHA-256, qop="auth"',
+        method: "GET",
+        uri: "/private/report"
+      )
+    end
+  end
+
+  def test_rejects_malformed_request_uri
+    session = Digestory::Session.new(username: "u", password: "p")
+    assert_raises(Digestory::InvalidHeader) do
+      session.authorize(
+        challenge: 'Digest realm="r", nonce="n", algorithm=SHA-256, qop="auth"',
+        method: "GET",
+        uri: "http://[invalid"
+      )
+    end
+  end
+
+  def test_rejects_empty_request_uri
+    session = Digestory::Session.new(username: "u", password: "p")
+    assert_raises(Digestory::InvalidHeader) do
+      session.authorize(
+        challenge: 'Digest realm="r", nonce="n", algorithm=SHA-256, qop="auth"',
+        method: "GET",
+        uri: ""
+      )
+    end
+  end
+end
+
+
+class SessionNonceStateLimitTest < Minitest::Test
+  def test_bounds_nonce_state_growth
+    session = Digestory::Session.new(username: "u", password: "p", max_nonce_states: 1)
+
+    session.authorize(
+      challenge: 'Digest realm="r", nonce="one", algorithm=SHA-256, qop="auth"',
+      method: "GET",
+      uri: "/"
+    )
+
+    assert_raises(Digestory::AuthenticationFailure) do
+      session.authorize(
+        challenge: 'Digest realm="r", nonce="two", algorithm=SHA-256, qop="auth"',
+        method: "GET",
+        uri: "/"
+      )
+    end
+
+    assert_equal 1, session.instance_variable_get(:@nonce_counts).size
+  end
+
+  def test_prefers_stronger_algorithm_within_first_protection_space
+    session = Digestory::Session.new(username: "u", password: "p")
+    challenge = [
+      Digestory::Challenge.parse('Digest realm="first", domain="/a", nonce="md5", algorithm=MD5, qop="auth"'),
+      Digestory::Challenge.parse('Digest realm="first", domain="/a", nonce="sha", algorithm=SHA-256, qop="auth"'),
+      Digestory::Challenge.parse('Digest realm="second", domain="/b", nonce="sha2", algorithm=SHA-512-256, qop="auth"')
+    ]
+
+    header = session.authorize(challenge: challenge, method: "GET", uri: "/a")
+    assert_includes header, 'realm="first"'
+    assert_includes header, 'algorithm=SHA-256'
+  end
 end
 
 
