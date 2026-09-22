@@ -31,7 +31,7 @@ class CompatibilityTest < Minitest::Test
   def test_cnonce_is_directly_randomized
     auth = Net::HTTP::DigestAuth.new
     cnonce = auth.make_cnonce
-    assert_match(/A[0-9a-f]{32}z/, cnonce)
+    assert_match(/\A[0-9a-f]{32}\z/, cnonce)
   end
 
   def test_bounds_session_cache_without_retaining_password_in_keys
