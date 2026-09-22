@@ -149,25 +149,27 @@ module Digestory
     end
 
     def body_bytes(body)
-      case body
-      when nil
-        "".b
-      when String
-        body.b
-      else
-        unless body.respond_to?(:read)
-          raise InvalidEntityBody, "entity body must be a String or readable IO"
-        end
+      begin
+        case body
+        when nil
+          "".b
+        when String
+          body.b
+        else
+          unless body.respond_to?(:read)
+            raise InvalidEntityBody, "entity body must be a String or readable IO"
+          end
 
-        unless body.respond_to?(:seek) && body.respond_to?(:pos)
-          raise InvalidEntityBody, "entity body IO must be seekable; supply entity_digest for non-rewindable streams"
-        end
+          unless body.respond_to?(:seek) && body.respond_to?(:pos)
+            raise InvalidEntityBody, "entity body IO must be seekable; supply entity_digest for non-rewindable streams"
+          end
 
-        original_position = body.pos
-        data = body.read
-        raise InvalidEntityBody, "entity body IO returned nil" if data.nil?
-        body.seek(original_position)
-        data.b
+          original_position = body.pos
+          data = body.read
+          raise InvalidEntityBody, "entity body IO returned nil" if data.nil?
+          body.seek(original_position)
+          data.b
+        end
       rescue IOError, SystemCallError => e
         raise InvalidEntityBody, "entity body IO could not be read or rewound: #{e.message}"
       end
