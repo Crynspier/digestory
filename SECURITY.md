@@ -14,6 +14,8 @@ Digest Authentication does not replace TLS. Use HTTPS for HTTP traffic, especial
 
 Digestory's core `Session` object keeps the password out of public readers, but applications should still avoid logging session objects, credentials, Authorization headers, and authentication challenges containing sensitive material.
 
+For concurrent in-flight authentication exchanges that require `Authentication-Info` verification, use the request-specific `AuthorizationContext` API. The legacy `authorize` / `update_authentication_info` pair retains a single compatibility last-request slot and is intended for sequential exchanges.
+
 ### Supported versions
 
 The 0.1 release line is the supported release line for this project while it is current.
