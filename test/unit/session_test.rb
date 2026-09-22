@@ -172,3 +172,70 @@ class SessionCredentialValidationTest < Minitest::Test
     end
   end
 end
+
+
+class SessionRequestContextTest < Minitest::Test
+  def build_rspauth(context, password: "p", response_body: nil)
+    Digestory::Digest.rspauth(
+      challenge: context.challenge,
+      username: context.username,
+      password: password,
+      request_uri: context.request_uri,
+      nc: context.nc,
+      cnonce: context.cnonce,
+      qop: context.qop,
+      response_body: response_body
+    )
+  end
+
+  def test_request_contexts_verify_out_of_order
+    session = Digestory::Session.new(username: "u", password: "p")
+    challenge = 'Digest realm="r", qop="auth", algorithm=SHA-256, nonce="n"'
+
+    first = session.authorize_with_context(challenge: challenge, method: "GET", uri: "/one")
+    second = session.authorize_with_context(challenge: challenge, method: "GET", uri: "/two")
+
+    assert_equal "00000001", first.nc
+    assert_equal "00000002", second.nc
+
+    second_info = session.verify_authentication_info(
+      second,
+      'qop=auth, rspauth="' + build_rspauth(second) + '", cnonce="' + second.cnonce + '", nc=' + second.nc
+    )
+    first_info = session.verify_authentication_info(
+      first,
+      'qop=auth, rspauth="' + build_rspauth(first) + '", cnonce="' + first.cnonce + '", nc=' + first.nc
+    )
+
+    assert_equal second.qop, second_info.qop
+    assert_equal first.qop, first_info.qop
+  end
+
+  def test_authorize_from_context_uses_explicit_nextnonce
+    session = Digestory::Session.new(username: "u", password: "p")
+    challenge = 'Digest realm="r", qop="auth", algorithm=SHA-256, nonce="n"'
+
+    first = session.authorize_with_context(challenge: challenge, method: "GET", uri: "/")
+    rspauth = build_rspauth(first)
+    info = session.verify_authentication_info(
+      first,
+      'qop=auth, rspauth="' + rspauth + '", cnonce="' + first.cnonce + '", nc=' + first.nc + ', nextnonce="n2"'
+    )
+
+    next_context = session.authorize_from(first, method: "GET", uri: "/next", nonce: info.nextnonce)
+    assert_equal "n2", next_context.nonce
+    assert_equal "00000001", next_context.nc
+  end
+
+  def test_auth_int_allows_empty_entity_body
+    session = Digestory::Session.new(username: "u", password: "p")
+    context = session.authorize_with_context(
+      challenge: 'Digest realm="r", qop="auth-int", algorithm=SHA-256, nonce="n"',
+      method: "GET",
+      uri: "/"
+    )
+
+    assert_equal "auth-int", context.qop
+    assert_equal "00000001", context.nc
+  end
+end
