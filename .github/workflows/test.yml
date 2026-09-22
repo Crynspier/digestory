@@ -31,5 +31,6 @@ jobs:
       - name: Fresh consumer test
         run: |
           tmpdir=$(mktemp -d)
-          gem install --local digestory-0.1.0.gem --install-dir "$tmpdir/gems" --no-document
-          GEM_HOME="$tmpdir/gems" GEM_PATH="$tmpdir/gems" ruby -e 'require "digestory"; abort unless Digestory::VERSION == "0.1.0"'
+          gem_file="digestory-$(ruby -Ilib -e 'require "digestory/version"; print Digestory::VERSION').gem"
+          gem install --local "$gem_file" --install-dir "$tmpdir/gems" --no-document
+          GEM_HOME="$tmpdir/gems" GEM_PATH="$tmpdir/gems" ruby -e 'require "digestory"; abort unless Digestory::VERSION == File.basename(Dir["$GEM_HOME/cache/digestory-*.gem"].first).delete_prefix("digestory-").delete_suffix(".gem")'
