@@ -3,9 +3,9 @@
 module Digestory
   class AuthorizationContext
     attr_reader :header, :challenge, :request_uri, :method, :qop, :cnonce,
-                :nc, :username, :response, :nonce_key
+                :nc, :username, :response, :nonce_key, :protection_key
 
-    def initialize(header:, challenge:, request_uri:, method:, qop:, cnonce:, nc:, username:, response:, nonce_key:)
+    def initialize(header:, challenge:, request_uri:, method:, qop:, cnonce:, nc:, username:, response:, nonce_key:, protection_key:)
       @header = header
       @challenge = challenge
       @request_uri = request_uri
@@ -16,6 +16,7 @@ module Digestory
       @username = username
       @response = response
       @nonce_key = nonce_key
+      @protection_key = protection_key
       freeze
     end
 
