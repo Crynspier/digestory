@@ -8,6 +8,7 @@ require_relative "digestory/challenge"
 require_relative "digestory/authentication_info"
 require_relative "digestory/digest"
 require_relative "digestory/serializer"
+require_relative "digestory/authorization_context"
 require_relative "digestory/session"
 
 module Digestory
