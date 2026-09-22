@@ -3,9 +3,9 @@
 module Digestory
   class Error < StandardError; end
   class ParseError < Error; end
-  class UnsupportedAlgorithm < Error; end
-  class UnsupportedQop < Error; end
   class InvalidChallenge < Error; end
+  class UnsupportedAlgorithm < InvalidChallenge; end
+  class UnsupportedQop < Error; end
   class InvalidAuthenticationInfo < Error; end
   class InvalidHeader < Error; end
   class MissingCredential < Error; end
