@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.2 - 2026-09-22
+
+- Hardened RFC 7616 protection-space enforcement so relative targets fail closed when an origin cannot be established.
+- Reject malformed and empty request targets instead of silently transforming them.
+- Added a configurable bound for per-session nonce-state growth.
+- Made challenge selection protection-space aware before applying stronger-algorithm preference.
+- Rejected ambiguous `auth-int` calls that provide both a body and a precomputed digest.
+- Replaced the compatibility adapter's time/PID/MD5 cnonce construction with direct cryptographic randomness.
+- Added a configurable bound for the compatibility adapter's session cache and removed plaintext passwords from cache keys.
+- Moved IIS qop quoting into the Authorization serializer instead of rewriting serialized headers.
+- Expanded regression coverage for URI validation, protection-space origin handling, bounded state, challenge selection, cache hygiene, cnonce generation, and `auth-int` input safety.
+
 ## 0.1.1 - 2026-09-22
 
 - Added immutable request-specific authorization contexts for concurrent authentication exchanges.
