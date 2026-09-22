@@ -109,6 +109,10 @@ module Digestory
       @domain_uris
     end
 
+    def protection_space_key
+      [@realm, @domain, @opaque].freeze
+    end
+
     # Returns true when the supplied target is within this challenge's
     # declared protection space. When domain is absent, RFC 7616 defines the
     # protection space as the web-origin; origin membership cannot be inferred
@@ -117,6 +121,9 @@ module Digestory
       return true if @domain_uris.empty?
 
       target = resolve_uri_reference(uri, base_uri)
+      return false unless target
+      return false if relative_reference?(uri) && !absolute_uri?(target)
+
       @domain_uris.any? { |entry| uri_prefix_match?(entry, target) }
     rescue URI::InvalidURIError
       false
@@ -180,9 +187,21 @@ module Digestory
 
       uri = URI.parse(value.to_s)
       return uri.to_s if uri.absolute?
-      return uri.to_s unless base_uri
+      return nil unless base_uri
 
-      URI.join(base_uri.to_s.end_with?("/") ? base_uri.to_s : "#{base_uri}/", value.to_s).to_s
+      base = URI.parse(base_uri.to_s)
+      return nil unless base.absolute?
+
+      URI.join(base.to_s.end_with?("/") ? base.to_s : "#{base}/", value.to_s).to_s
+    end
+
+    def relative_reference?(value)
+      uri = URI.parse(value.to_s)
+      !uri.absolute?
+    end
+
+    def absolute_uri?(value)
+      URI.parse(value.to_s).absolute?
     end
 
     def uri_prefix_match?(entry, target)
