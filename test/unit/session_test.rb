@@ -239,3 +239,27 @@ class SessionRequestContextTest < Minitest::Test
     assert_equal "00000001", context.nc
   end
 end
+
+
+class SessionProtectionSpaceTest < Minitest::Test
+  def test_optional_domain_enforcement
+    session = Digestory::Session.new(username: "u", password: "p", enforce_domain: true)
+    assert_raises(Digestory::InvalidChallenge) do
+      session.authorize(
+        challenge: 'Digest realm="r", domain="/private", nonce="n", algorithm=SHA-256, qop="auth"',
+        method: "GET",
+        uri: "/public"
+      )
+    end
+  end
+
+  def test_domain_enforcement_accepts_protected_path
+    session = Digestory::Session.new(username: "u", password: "p", enforce_domain: true)
+    header = session.authorize(
+      challenge: 'Digest realm="r", domain="/private", nonce="n", algorithm=SHA-256, qop="auth"',
+      method: "GET",
+      uri: "/private/report"
+    )
+    assert_includes header, 'uri="/private/report"'
+  end
+end
