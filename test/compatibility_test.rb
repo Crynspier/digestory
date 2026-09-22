@@ -38,3 +38,18 @@ class CompatibilityCredentialTest < Minitest::Test
     assert_includes header, 'username="u+v"'
   end
 end
+
+
+class CompatibilityCredentialValidationTest < Minitest::Test
+  def test_requires_uri_password
+    auth = Net::HTTP::DigestAuth.new
+    uri = URI("http://u@example.org/")
+    assert_raises(Digestory::MissingCredential) do
+      auth.auth_header(
+        uri,
+        'Digest realm="r", qop="auth", algorithm=MD5, nonce="n"',
+        "GET"
+      )
+    end
+  end
+end
