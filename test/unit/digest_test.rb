@@ -150,3 +150,79 @@ class CnonceValidationTest < Minitest::Test
     end
   end
 end
+
+
+class EntityDigestTest < Minitest::Test
+  def test_auth_int_accepts_precomputed_entity_digest
+    challenge = Digestory::Challenge.parse(
+      'Digest realm="r", qop="auth-int", algorithm=SHA-256, nonce="n"'
+    )
+    entity_digest = Digestory::Algorithm.digest("SHA-256", "hello")
+    response = Digestory::Digest.response(
+      challenge: challenge,
+      username: "u",
+      password: "p",
+      method: "POST",
+      uri: "/x",
+      nc: "00000001",
+      cnonce: "c",
+      qop: "auth-int",
+      entity_digest: entity_digest
+    )
+    expected = Digestory::Digest.response(
+      challenge: challenge,
+      username: "u",
+      password: "p",
+      method: "POST",
+      uri: "/x",
+      nc: "00000001",
+      cnonce: "c",
+      qop: "auth-int",
+      entity_body: "hello"
+    )
+    assert_equal expected, response
+  end
+
+  def test_rejects_entity_digest_for_non_auth_int
+    challenge = Digestory::Challenge.parse(
+      'Digest realm="r", qop="auth", algorithm=SHA-256, nonce="n"'
+    )
+    assert_raises(Digestory::InvalidEntityBody) do
+      Digestory::Digest.response(
+        challenge: challenge,
+        username: "u",
+        password: "p",
+        method: "GET",
+        uri: "/",
+        nc: "00000001",
+        cnonce: "c",
+        qop: "auth",
+        entity_digest: "0" * 64
+      )
+    end
+  end
+
+  def test_auth_int_rejects_non_rewindable_io
+    challenge = Digestory::Challenge.parse(
+      'Digest realm="r", qop="auth-int", algorithm=SHA-256, nonce="n"'
+    )
+    body = Object.new
+    def body.read
+      "hello"
+    end
+
+    assert_raises(Digestory::InvalidEntityBody) do
+      Digestory::Digest.response(
+        challenge: challenge,
+        username: "u",
+        password: "p",
+        method: "POST",
+        uri: "/",
+        nc: "00000001",
+        cnonce: "c",
+        qop: "auth-int",
+        entity_body: body
+      )
+    end
+  end
+end
