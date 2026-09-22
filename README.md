@@ -31,8 +31,9 @@ gem "digestory"
 - Authentication-Info with `nextnonce` and `rspauth` verification.
 - Per-nonce nonce counts with replay-state protection.
 - Immutable request-specific authorization contexts for concurrent authentication exchanges.
-- Optional Digest protection-space (`domain`) enforcement.
-- Legacy `Net::HTTP::DigestAuth` compatibility adapter.
+- Optional Digest protection-space (`domain`) enforcement with fail-closed origin handling.
+- Bounded replay-state growth for long-lived sessions.
+- Legacy `Net::HTTP::DigestAuth` compatibility adapter with bounded credential/session caching.
 - Ruby 3.3+.
 
 ### SHA-512/256 compatibility note
@@ -111,7 +112,7 @@ session = Digestory::Session.new(
 )
 ~~~
 
-When a server sends multiple Digest challenges, unsupported algorithms and unusable qop combinations are ignored during negotiation. A stronger usable algorithm is preferred by default; pass `prefer_stronger_algorithm: false` to follow the server's first supported challenge instead.
+When a server sends multiple Digest challenges, unsupported algorithms and unusable qop combinations are ignored during negotiation. By default, Digestory keeps the first usable protection space and prefers the strongest supported algorithm within that space; pass `prefer_stronger_algorithm: false` to follow the server's first supported challenge instead.
 
 If `Digestory::Challenge.parse` sees Digest challenges but every Digest challenge uses an unsupported algorithm, it raises `Digestory::UnsupportedAlgorithm` so callers can distinguish that case from a header containing no Digest challenge at all.
 
@@ -137,7 +138,7 @@ session = Digestory::Session.new(
 )
 ~~~
 
-Without `enforce_domain`, `domain` remains metadata and applications can make their own protection-space decisions. This is useful for legacy integrations where a server's domain declaration is incomplete or non-standard.
+When enforcement is enabled, Digestory fails closed if a relative request target cannot be associated with an absolute origin. Without `enforce_domain`, `domain` remains metadata and applications can make their own protection-space decisions. This is useful for legacy integrations where a server's domain declaration is incomplete or non-standard.
 
 ### `auth-int` request bodies
 
@@ -158,7 +159,7 @@ context = session.authorize_with_context(
 )
 ~~~
 
-The digest must be the hexadecimal digest produced by the selected Digest algorithm.
+The digest must be the hexadecimal digest produced by the selected Digest algorithm. Do not provide `entity_body` and `entity_digest` together; doing so raises `Digestory::InvalidEntityBody` to avoid silently authenticating a digest that differs from the supplied body.
 
 ## Legacy API
 
@@ -210,4 +211,4 @@ gem install --local digestory-0.1.1.gem --no-document
 
 The test suite includes RFC/FIPS vectors, compatibility regressions, header-parser security tests, deterministic malformed-input fuzz smoke tests, protection-space and request-context regressions, local HTTP interoperability, and optional `curl --digest` interoperability.
 
-The suite also covers SHA-512/256 digest construction and replay-safe `auth-int` handling. External-server behavior remains environment-dependent, so local integration tests are supplemented by independent protocol vectors and parser/security regressions.
+The suite also covers SHA-512/256 digest construction, replay-safe `auth-int` handling, URI rejection, bounded session state, and compatibility-cache hygiene. External-server behavior remains environment-dependent, so local integration tests are supplemented by independent protocol vectors and parser/security regressions.
