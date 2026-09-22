@@ -36,7 +36,7 @@ module Net
         parsed_uri = uri.is_a?(URI) ? uri : URI.parse(uri.to_s)
         username = URI::DEFAULT_PARSER.unescape(parsed_uri.user.to_s)
         password = URI::DEFAULT_PARSER.unescape(parsed_uri.password.to_s)
-        raise Digestory::MissingCredential, "URI must contain username and password" if username.empty? && parsed_uri.user.nil?
+        raise Digestory::MissingCredential, "URI must contain username and password" if parsed_uri.user.nil? || parsed_uri.password.nil?
 
         challenge = Digestory::Challenge.parse(www_authenticate)
         qop = challenge.choose_qop(preference: %w[auth], allow_legacy_no_qop: true)
