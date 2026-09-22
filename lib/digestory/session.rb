@@ -222,7 +222,8 @@ module Digestory
     def parse_challenges(challenge)
       case challenge
       when String
-        Challenge.parse_all(challenge)
+        parsed = Challenge.parse_all(challenge)
+        parsed.empty? ? Challenge.parse(challenge) : parsed
       when Array
         challenge.flat_map { |item| item.is_a?(Challenge) ? [item] : Challenge.parse_all(item.to_s) }
       when Challenge
