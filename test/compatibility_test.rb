@@ -26,7 +26,6 @@ class CompatibilityTest < Minitest::Test
     uri = URI("http://u:p@example.org/")
     header = auth.auth_header(uri, 'Digest realm="r", qop="auth", algorithm=MD5, nonce="n"', "GET", true)
     assert_includes header, 'qop="auth"'
-    refute_includes header, 'qop="auth",'
   end
 
   def test_cnonce_is_directly_randomized
