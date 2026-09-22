@@ -153,6 +153,49 @@ end
 
 
 class EntityDigestTest < Minitest::Test
+  def test_rejects_entity_body_and_digest_together
+    challenge = Digestory::Challenge.parse(
+      'Digest realm="r", qop="auth-int", algorithm=SHA-256, nonce="n"'
+    )
+    entity_digest = Digestory::Algorithm.digest("SHA-256", "hello")
+
+    assert_raises(Digestory::InvalidEntityBody) do
+      Digestory::Digest.response(
+        challenge: challenge,
+        username: "u",
+        password: "p",
+        method: "POST",
+        uri: "/x",
+        nc: "00000001",
+        cnonce: "c",
+        qop: "auth-int",
+        entity_body: "hello",
+        entity_digest: entity_digest
+      )
+    end
+  end
+
+  def test_rejects_response_body_and_digest_together
+    challenge = Digestory::Challenge.parse(
+      'Digest realm="r", qop="auth-int", algorithm=SHA-256, nonce="n"'
+    )
+    entity_digest = Digestory::Algorithm.digest("SHA-256", "hello")
+
+    assert_raises(Digestory::InvalidEntityBody) do
+      Digestory::Digest.rspauth(
+        challenge: challenge,
+        username: "u",
+        password: "p",
+        request_uri: "/x",
+        nc: "00000001",
+        cnonce: "c",
+        qop: "auth-int",
+        response_body: "hello",
+        entity_digest: entity_digest
+      )
+    end
+  end
+
   def test_auth_int_accepts_precomputed_entity_digest
     challenge = Digestory::Challenge.parse(
       'Digest realm="r", qop="auth-int", algorithm=SHA-256, nonce="n"'
