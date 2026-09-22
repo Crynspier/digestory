@@ -4,9 +4,9 @@ module Digestory
   module Digest
     module_function
 
-    def response(challenge:, username:, password:, method:, uri:, nc:, cnonce:, qop:, entity_body: nil)
+    def response(challenge:, username:, password:, method:, uri:, nc:, cnonce:, qop:, entity_body: nil, entity_digest: nil)
       algorithm = challenge.algorithm
-      validate_qop_inputs(qop: qop, nc: nc, cnonce: cnonce, algorithm: algorithm)
+      validate_qop_inputs(qop: qop, nc: nc, cnonce: cnonce, algorithm: algorithm, entity_digest: entity_digest)
       ha1 = ha1(
         algorithm: algorithm,
         username: username,
@@ -21,7 +21,8 @@ module Digestory
         method: method,
         uri: uri,
         qop: qop,
-        entity_body: entity_body
+        entity_body: entity_body,
+        entity_digest: entity_digest
       )
 
       kd(algorithm, ha1, if qop
@@ -31,9 +32,9 @@ module Digestory
                          end)
     end
 
-    def rspauth(challenge:, username:, password:, request_uri:, nc:, cnonce:, qop:, response_body: nil)
+    def rspauth(challenge:, username:, password:, request_uri:, nc:, cnonce:, qop:, response_body: nil, entity_digest: nil)
       algorithm = challenge.algorithm
-      validate_qop_inputs(qop: qop, nc: nc, cnonce: cnonce, algorithm: algorithm)
+      validate_qop_inputs(qop: qop, nc: nc, cnonce: cnonce, algorithm: algorithm, entity_digest: entity_digest)
       ha1 = ha1(
         algorithm: algorithm,
         username: username,
@@ -45,8 +46,10 @@ module Digestory
       )
       a2 = ":#{request_uri}"
       if qop == "auth-int"
-        body_digest = hash(algorithm, body_bytes(response_body))
+        body_digest = entity_digest || hash(algorithm, body_bytes(response_body))
         a2 = "#{a2}:#{body_digest}"
+      elsif entity_digest
+        raise InvalidEntityBody, "entity_digest is only valid with auth-int"
       end
       ha2 = hash(algorithm, a2)
       kd(algorithm, ha1, if qop
@@ -75,10 +78,13 @@ module Digestory
       end
     end
 
-    def ha2(algorithm:, method:, uri:, qop:, entity_body:)
+    def ha2(algorithm:, method:, uri:, qop:, entity_body:, entity_digest:)
       value = "#{method}:#{uri}"
       if qop == "auth-int"
-        value = "#{value}:#{hash(algorithm, body_bytes(entity_body))}"
+        body_digest = entity_digest || hash(algorithm, body_bytes(entity_body))
+        value = "#{value}:#{body_digest}"
+      elsif entity_digest
+        raise InvalidEntityBody, "entity_digest is only valid with auth-int"
       end
       hash(algorithm, value)
     end
@@ -117,15 +123,26 @@ module Digestory
       raise InvalidHeader, "value cannot be represented in #{charset}: #{e.message}"
     end
 
-    def validate_qop_inputs(qop:, nc:, cnonce:, algorithm: nil)
-      if qop
-        raise InvalidHeader, "qop requires nonce-count" unless nc&.match?(/\A[0-9a-fA-F]{8}\z/)
-        raise InvalidHeader, "qop requires cnonce" if cnonce.nil? || cnonce.empty?
-        unless cnonce && cnonce.each_byte.all? { |byte| byte >= 0x20 && byte <= 0x7e }
-          raise InvalidHeader, "cnonce must contain only visible ASCII characters"
-        end
-        raise UnsupportedQop, "unsupported qop #{qop.inspect}" unless %w[auth auth-int].include?(qop)
+    def validate_qop_inputs(qop:, nc:, cnonce:, algorithm: nil, entity_digest: nil)
+      unless qop
+        raise InvalidEntityBody, "entity_digest is only valid with auth-int" if entity_digest
+        return
       end
+
+      raise InvalidHeader, "qop requires nonce-count" unless nc&.match?(/\A[0-9a-fA-F]{8}\z/)
+      raise InvalidHeader, "qop requires cnonce" if cnonce.nil? || cnonce.empty?
+      unless cnonce && cnonce.each_byte.all? { |byte| byte >= 0x20 && byte <= 0x7e }
+        raise InvalidHeader, "cnonce must contain only visible ASCII characters"
+      end
+      raise UnsupportedQop, "unsupported qop #{qop.inspect}" unless %w[auth auth-int].include?(qop)
+
+      if entity_digest
+        expected_size = Algorithm.digest_size(algorithm) * 2
+        unless entity_digest.is_a?(String) && entity_digest.match?(/\A[0-9a-fA-F]{#{expected_size}}\z/)
+          raise InvalidEntityBody, "entity_digest must be a hexadecimal digest matching the selected algorithm"
+        end
+      end
+
       if algorithm && Algorithm.sess?(algorithm) && (cnonce.nil? || cnonce.empty?)
         raise InvalidHeader, "session algorithm requires cnonce"
       end
@@ -141,15 +158,18 @@ module Digestory
         unless body.respond_to?(:read)
           raise InvalidEntityBody, "entity body must be a String or readable IO"
         end
-        original_position = body.pos if body.respond_to?(:pos)
+
+        unless body.respond_to?(:seek) && body.respond_to?(:pos)
+          raise InvalidEntityBody, "entity body IO must be seekable; supply entity_digest for non-rewindable streams"
+        end
+
+        original_position = body.pos
         data = body.read
         raise InvalidEntityBody, "entity body IO returned nil" if data.nil?
-        if original_position && body.respond_to?(:seek)
-          body.seek(original_position)
-        elsif body.respond_to?(:rewind) && original_position == 0
-          body.rewind
-        end
+        body.seek(original_position)
         data.b
+      rescue IOError, SystemCallError => e
+        raise InvalidEntityBody, "entity body IO could not be read or rewound: #{e.message}"
       end
     end
   end
