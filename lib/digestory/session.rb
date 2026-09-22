@@ -79,11 +79,11 @@ module Digestory
       )
     end
 
-    def update_authentication_info(header, response_body: nil, verify: false, context: nil)
+    def update_authentication_info(header, response_body: nil, response_digest: nil, verify: false, context: nil)
       info = AuthenticationInfo.parse(header)
       state = context || @mutex.synchronize { @last }
 
-      verify_authentication_info!(state, info, response_body: response_body) if verify
+      verify_authentication_info!(state, info, response_body: response_body, response_digest: response_digest) if verify
 
       if info.nextnonce && context.nil?
         @mutex.synchronize { @next_nonce = info.nextnonce }
@@ -91,10 +91,16 @@ module Digestory
       info
     end
 
-    def verify_authentication_info(context, header, response_body: nil)
+    def verify_authentication_info(context, header, response_body: nil, response_digest: nil)
       raise ArgumentError, "context must be a Digestory::AuthorizationContext" unless context.is_a?(AuthorizationContext)
 
-      update_authentication_info(header, response_body: response_body, verify: true, context: context)
+      update_authentication_info(
+        header,
+        response_body: response_body,
+        response_digest: response_digest,
+        verify: true,
+        context: context
+      )
     end
 
     # Legacy convenience accessor. New concurrent code should use the
@@ -250,7 +256,7 @@ module Digestory
       usable.max_by { |item| Algorithm.secure_rank(item.algorithm) }
     end
 
-    def verify_authentication_info!(state, info, response_body:)
+    def verify_authentication_info!(state, info, response_body:, response_digest:)
       raise AuthenticationFailure, "no prior authenticated request" unless state
       raise AuthenticationFailure, "missing rspauth" unless info.rspauth
 
@@ -270,7 +276,8 @@ module Digestory
         nc: state.nc,
         cnonce: state.cnonce,
         qop: state.qop,
-        response_body: response_body
+        response_body: response_body,
+        entity_digest: response_digest
       )
       expected_size = Algorithm.digest_size(state.challenge.algorithm) * 2
       unless info.rspauth.bytesize == expected_size
