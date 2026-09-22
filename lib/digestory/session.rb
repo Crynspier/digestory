@@ -333,10 +333,10 @@ module Digestory
 
       value = uri.to_s
       raise InvalidHeader, "request URI cannot be empty" if value.empty?
-      return value if value == "*" || value.start_with?("/")
+      return value if value == "*"
 
       parsed = URI.parse(value)
-      return value if parsed.absolute?
+      return value if parsed.absolute? || value.start_with?("/")
 
       "/#{value}"
     rescue URI::InvalidURIError => e
