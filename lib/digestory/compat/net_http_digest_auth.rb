@@ -109,16 +109,6 @@ module Net
           Digestory::Parameters.split_assignment(piece)
         end
       end
-            username: username,
-            password: password,
-            qop_preference: %w[auth],
-            prefer_stronger_algorithm: false,
-            allow_legacy_no_qop: true,
-            use_username_star: use_username_star
-          )
-        end
-      end
-
     end
   end
 end
