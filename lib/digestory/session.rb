@@ -24,6 +24,7 @@ module Digestory
       @nonce_counts = Hash.new(0)
       @nonce_count = 0
       @next_nonce = nil
+      @next_nonce_key = nil
       @last = nil
     end
 
@@ -43,6 +44,7 @@ module Digestory
       )
       @mutex.synchronize do
         @next_nonce = nil
+        @next_nonce_key = nil
         @last = context
       end
       context.header
@@ -86,7 +88,10 @@ module Digestory
       verify_authentication_info!(state, info, response_body: response_body, response_digest: response_digest) if verify
 
       if info.nextnonce && context.nil?
-        @mutex.synchronize { @next_nonce = info.nextnonce }
+        @mutex.synchronize do
+          @next_nonce = info.nextnonce
+          @next_nonce_key = state&.protection_key
+        end
       end
       info
     end
@@ -121,16 +126,18 @@ module Digestory
         entity_digest: entity_digest
       )
 
+      request_target = request_uri(uri)
+
       if apply_legacy_nextnonce
-        pending_nonce, previous_nonce = @mutex.synchronize { [@next_nonce, @last&.nonce] }
-        if pending_nonce && previous_nonce == selected_challenge.nonce
+        pending_nonce, pending_key = @mutex.synchronize { [@next_nonce, @next_nonce_key] }
+        current_protection_key = protection_key(selected_challenge, request_target)
+        if pending_nonce && pending_key == current_protection_key
           selected_challenge = selected_challenge.with_nonce(pending_nonce)
         end
       elsif nonce
         selected_challenge = selected_challenge.with_nonce(nonce) unless nonce == selected_challenge.nonce
       end
 
-      request_target = request_uri(uri)
       if @enforce_domain && !selected_challenge.protects?(request_target, base_uri: absolute_base_uri(uri))
         raise InvalidChallenge, "request URI is outside the Digest challenge protection space"
       end
@@ -215,7 +222,8 @@ module Digestory
         nc: nc,
         username: @username,
         response: response,
-        nonce_key: nonce_key
+        nonce_key: nonce_key,
+        protection_key: protection_key(selected_challenge, request_target)
       )
     end
 
@@ -289,14 +297,18 @@ module Digestory
       end
     end
 
-    def nonce_state_key(challenge, request_target)
+    def protection_key(challenge, request_target)
       origin = begin
         parsed = URI.parse(request_target)
         parsed.absolute? ? [parsed.scheme&.downcase, parsed.host&.downcase, parsed.port] : nil
       rescue URI::InvalidURIError
         nil
       end
-      [origin, challenge.realm, challenge.domain, challenge.opaque, challenge.nonce].freeze
+      [origin, challenge.realm, challenge.domain, challenge.opaque].freeze
+    end
+
+    def nonce_state_key(challenge, request_target)
+      [protection_key(challenge, request_target), challenge.nonce].freeze
     end
 
     def request_uri(uri)
