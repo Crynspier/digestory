@@ -14,8 +14,8 @@ module Net
 
       def initialize(_ignored = :ignored)
         @nonce_count = 0
-        @current_nonce = nil
         @mutex = Mutex.new
+        @sessions = {}
       end
 
       def make_cnonce
@@ -26,65 +26,63 @@ module Net
         ].join(":"))
       end
 
+      # Historical helper retained for compatibility. The authentication
+      # implementation itself now uses Digestory::Session's per-nonce state.
       def next_nonce
         @mutex.synchronize do
           @nonce_count += 1
         end
       end
 
-      def auth_header(uri, www_authenticate, method, iis = false)
+      def auth_header(uri, www_authenticate, method, iis = false, entity_body: nil, entity_digest: nil,
+                      qop: nil, use_username_star: false)
         parsed_uri = uri.is_a?(URI) ? uri : URI.parse(uri.to_s)
         username = URI::DEFAULT_PARSER.unescape(parsed_uri.user.to_s)
         password = URI::DEFAULT_PARSER.unescape(parsed_uri.password.to_s)
         raise Digestory::MissingCredential, "URI must contain username and password" if parsed_uri.user.nil? || parsed_uri.password.nil?
 
-        challenge = Digestory::Challenge.parse(www_authenticate)
-        qop = challenge.choose_qop(preference: %w[auth], allow_legacy_no_qop: true)
-        nonce_count, cnonce = @mutex.synchronize do
-          if qop || Digestory::Algorithm.sess?(challenge.algorithm)
-            if @current_nonce != challenge.nonce
-              @current_nonce = challenge.nonce
-              @nonce_count = 0
-            end
-            @nonce_count += 1
-            [format("%08x", @nonce_count), make_cnonce]
-          else
-            [nil, nil]
-          end
-        end
-
-        response = Digestory::Digest.response(
-          challenge: challenge,
-          username: username,
-          password: password,
+        session = session_for(parsed_uri, username, password, use_username_star: use_username_star)
+        header = session.authorize(
+          challenge: www_authenticate,
           method: method.to_s,
-          uri: parsed_uri.request_uri,
-          nc: nonce_count,
-          cnonce: cnonce,
+          uri: parsed_uri,
+          entity_body: entity_body,
+          entity_digest: entity_digest,
           qop: qop,
-          entity_body: nil
+          cnonce: make_cnonce
         )
 
-        params = [
-          ["username", username],
-          ["realm", challenge.realm],
-          ["algorithm", challenge.algorithm],
-          ["uri", parsed_uri.request_uri],
-          ["nonce", challenge.nonce]
-        ]
-        if qop || Digestory::Algorithm.sess?(challenge.algorithm)
-          params << ["nc", nonce_count]
-          params << ["cnonce", cnonce]
-        end
-        params << ["qop", qop] if qop
-        params << ["response", response]
-        params << ["opaque", challenge.opaque] if challenge.opaque
-
-        header = Digestory::Serializer.authorization(params)
-        if iis && qop
-          header = header.sub("qop=#{qop}", 'qop="' + qop + '"')
+        if iis && qop_value_for_compat(www_authenticate, qop, entity_body, entity_digest)
+          qop_value = qop_value_for_compat(www_authenticate, qop, entity_body, entity_digest)
+          header = header.sub("qop=#{qop_value}", 'qop="' + qop_value + '"')
         end
         header
+      end
+
+      private
+
+      def session_for(uri, username, password, use_username_star:)
+        key = [uri.scheme&.downcase, uri.host&.downcase, uri.port, username, password].freeze
+        @mutex.synchronize do
+          @sessions[key] ||= Digestory::Session.new(
+            username: username,
+            password: password,
+            qop_preference: %w[auth],
+            prefer_stronger_algorithm: false,
+            allow_legacy_no_qop: true,
+            use_username_star: use_username_star
+          )
+        end
+      end
+
+      def qop_value_for_compat(www_authenticate, requested_qop, entity_body, entity_digest)
+        return requested_qop.to_s.downcase if requested_qop
+        challenge = Digestory::Challenge.parse(www_authenticate)
+        return nil if challenge.qop.empty?
+        return "auth" if challenge.qop.include?("auth")
+        return "auth-int" if (entity_body || entity_digest) && challenge.qop.include?("auth-int")
+
+        nil
       end
     end
   end
