@@ -146,6 +146,8 @@ An empty entity body is represented by `entity_body: nil` and is valid for `auth
 
 For a replayable IO, Digestory temporarily reads and restores the original position. Non-seekable streams are rejected so authentication does not silently consume a request body that the HTTP client cannot replay.
 
+Long-lived sessions bound the number of distinct nonce states by default. Configure `max_nonce_states:` when a larger working set is required; when the bound is reached, Digestory refuses a new nonce rather than evicting state and risking nonce-count reuse.
+
 For large or non-replayable bodies, provide the already-computed digest:
 
 ~~~ruby
@@ -206,7 +208,7 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting and the protocol secu
 ~~~sh
 ruby -Ilib -Itest -e 'Dir["test/**/*_test.rb"].sort.each { |f| require File.expand_path(f) }'
 gem build digestory.gemspec
-gem install --local digestory-0.1.1.gem --no-document
+gem install --local digestory-0.1.2.gem --no-document
 ~~~
 
 The test suite includes RFC/FIPS vectors, compatibility regressions, header-parser security tests, deterministic malformed-input fuzz smoke tests, protection-space and request-context regressions, local HTTP interoperability, and optional `curl --digest` interoperability.
