@@ -20,6 +20,24 @@ module Digestory
       freeze
     end
 
+    # Compatibility accessor for the pre-0.1.1 internal state hash shape.
+    def [](key)
+      case key.to_sym
+      when :challenge then @challenge
+      when :request_uri then @request_uri
+      when :method then @method
+      when :qop then @qop
+      when :cnonce then @cnonce
+      when :nc then @nc
+      when :username then @username
+      when :response then @response
+      when :nonce_key then @nonce_key
+      when :protection_key then @protection_key
+      else
+        nil
+      end
+    end
+
     def nonce
       @challenge.nonce
     end
