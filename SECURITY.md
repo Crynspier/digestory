@@ -16,6 +16,8 @@ Digestory's core `Session` object keeps the password out of public readers, but 
 
 For concurrent in-flight authentication exchanges that require `Authentication-Info` verification, use the request-specific `AuthorizationContext` API. The legacy `authorize` / `update_authentication_info` pair retains a single compatibility last-request slot and is intended for sequential exchanges.
 
+Long-lived sessions bound their nonce-state cache to prevent unbounded attacker-driven memory growth. The compatibility adapter likewise bounds its internal session cache; it does not evict authentication state automatically because doing so could reset nonce counts for a still-valid server nonce. Applications that reach a configured cache limit should start a new session/authentication object rather than silently reusing reset state.
+
 ### Supported versions
 
 The 0.1 release line is the supported release line for this project while it is current.
