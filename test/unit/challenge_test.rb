@@ -118,3 +118,13 @@ class ChallengeQopParsingTest < Minitest::Test
     end
   end
 end
+
+
+class ChallengeDomainParsingTest < Minitest::Test
+  def test_domain_uri_can_contain_a_comma
+    challenge = Digestory::Challenge.parse(
+      'Digest realm="r", domain="/private?next=a,b /other", nonce="n", algorithm=SHA-256, qop="auth"'
+    )
+    assert_equal ["/private?next=a,b", "/other"], challenge.domain_uris
+  end
+end
