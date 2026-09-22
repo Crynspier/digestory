@@ -2,7 +2,7 @@
 
 Modern HTTP Digest Authentication for Ruby.
 
-Digestory is a small, compatibility-aware implementation of RFC 7616 for modern Ruby. It provides a protocol-focused core for challenge parsing, digest calculation, authorization headers, session state, and Authentication-Info, plus an adapter for the historical `Net::HTTP::DigestAuth` API.
+Digestory is a small, compatibility-aware implementation of RFC 7616 for modern Ruby. It provides a protocol-focused core for challenge parsing, digest calculation, authorization headers, request-specific authentication contexts, session state, and Authentication-Info, plus an adapter for the historical `Net::HTTP::DigestAuth` API.
 
 ## Why
 
@@ -30,6 +30,8 @@ gem "digestory"
 - RFC 7616 username hashing and RFC 5987 `username*`.
 - Authentication-Info with `nextnonce` and `rspauth` verification.
 - Per-nonce nonce counts with replay-state protection.
+- Immutable request-specific authorization contexts for concurrent authentication exchanges.
+- Optional Digest protection-space (`domain`) enforcement.
 - Legacy `Net::HTTP::DigestAuth` compatibility adapter.
 - Ruby 3.3+.
 
@@ -38,6 +40,8 @@ gem "digestory"
 Digestory implements the actual SHA-512/256 algorithm defined by FIPS 180-4. Some RFC 7616 example values were published using a truncated SHA-512 calculation instead; Digestory intentionally follows the standardized SHA-512/256 construction so it interoperates with implementations that implement the algorithm by its FIPS definition.
 
 ## Native API
+
+The simple API remains compatible with 0.1.0:
 
 ~~~ruby
 require "digestory"
@@ -56,6 +60,47 @@ header = session.authorize(
 # request["Authorization"] = header
 ~~~
 
+For concurrent in-flight requests, use the request-specific context API:
+
+~~~ruby
+session = Digestory::Session.new(
+  username: "Mufasa",
+  password: "Circle of Life"
+)
+
+context = session.authorize_with_context(
+  challenge: www_authenticate,
+  method: "GET",
+  uri: "/dir/index.html"
+)
+
+request["Authorization"] = context.header
+
+# Later, for the matching response:
+info = session.verify_authentication_info(
+  context,
+  response["authentication-info"],
+  response_body: response.body
+)
+~~~
+
+Each `AuthorizationContext` is immutable and contains the exact challenge, nonce, nonce-count, cnonce, request URI, and digest response used for that request. Verification therefore does not depend on a single global "last request" slot.
+
+When a server returns `nextnonce`, the modern API keeps that value explicit:
+
+~~~ruby
+next_context = session.authorize_from(
+  context,
+  method: "GET",
+  uri: "/next",
+  nonce: info.nextnonce
+)
+~~~
+
+This avoids accidentally applying a nonce received for one concurrent exchange to another exchange.
+
+### QOP and negotiation
+
 The core API is strict by default: a Digest challenge without a supported `qop` is rejected. For an intentionally legacy peer, enable the compatibility behavior explicitly:
 
 ~~~ruby
@@ -68,6 +113,53 @@ session = Digestory::Session.new(
 
 When a server sends multiple Digest challenges, unsupported algorithms and unusable qop combinations are ignored during negotiation. A stronger usable algorithm is preferred by default; pass `prefer_stronger_algorithm: false` to follow the server's first supported challenge instead.
 
+If `Digestory::Challenge.parse` sees Digest challenges but every Digest challenge uses an unsupported algorithm, it raises `Digestory::UnsupportedAlgorithm` so callers can distinguish that case from a header containing no Digest challenge at all.
+
+### Protection spaces
+
+Digestory parses the RFC 7616 `domain` parameter and exposes:
+
+~~~ruby
+challenge.protects?("/private/report")
+challenge.protects?(
+  "/private/report",
+  base_uri: "https://example.org"
+)
+~~~
+
+Optional session enforcement is available:
+
+~~~ruby
+session = Digestory::Session.new(
+  username: "u",
+  password: "p",
+  enforce_domain: true
+)
+~~~
+
+Without `enforce_domain`, `domain` remains metadata and applications can make their own protection-space decisions. This is useful for legacy integrations where a server's domain declaration is incomplete or non-standard.
+
+### `auth-int` request bodies
+
+An empty entity body is represented by `entity_body: nil` and is valid for `auth-int`.
+
+For a replayable IO, Digestory temporarily reads and restores the original position. Non-seekable streams are rejected so authentication does not silently consume a request body that the HTTP client cannot replay.
+
+For large or non-replayable bodies, provide the already-computed digest:
+
+~~~ruby
+entity_digest = Digestory::Algorithm.digest("SHA-256", body_bytes)
+
+context = session.authorize_with_context(
+  challenge: challenge,
+  method: "POST",
+  uri: "/upload",
+  entity_digest: entity_digest
+)
+~~~
+
+The digest must be the hexadecimal digest produced by the selected Digest algorithm.
+
 ## Legacy API
 
 ~~~ruby
@@ -78,7 +170,9 @@ auth = Net::HTTP::DigestAuth.new
 authorization = auth.auth_header(uri, www_authenticate, "GET")
 ~~~
 
-The compatibility adapter is intended to ease migration from `net-http-digest_auth`; it does not promise byte-for-byte preservation of undocumented historical quirks.
+The compatibility adapter is intended to ease migration from `net-http-digest_auth`. It deliberately preserves the historical API and its narrower behavior; use `Digestory::Session` for the modern RFC 7616 feature set, including `auth-int`, username hashing, `username*`, and Authentication-Info verification.
+
+The legacy adapter expects both URI user and password fields to be present. URI credentials are a legacy transport mechanism and should not be logged; prefer explicit username/password handling in new applications.
 
 ## Request URI handling
 
@@ -90,11 +184,19 @@ http://example.org/resource?x=1
 
 A `URI` object uses Ruby's `request_uri` representation, which is the normal origin-form path and query used by `Net::HTTP`. The special request target `*` is preserved.
 
+## HTTP retry and `stale=true`
+
+The low-level API intentionally does not automatically retry arbitrary HTTP requests. Applications or HTTP-client integrations remain responsible for deciding whether a request body can be replayed, limiting retry attempts, and handling transport-specific behavior.
+
+A `Challenge` exposes `stale?`. When a server returns a new stale challenge, pass that challenge into `authorize` or `authorize_with_context` to construct the retry credentials without prompting for new credentials.
+
 ## Security
 
 Digest Authentication does not replace TLS. It does not provide general confidentiality for HTTP messages; use HTTPS for transport security.
 
 Do not treat the password or generated Authorization header as safe to log.
+
+The legacy `authorize` / `update_authentication_info` API keeps a compatibility "last request" slot. It is safe for sequential exchanges, but concurrent callers requiring response verification should use `authorize_with_context` and `verify_authentication_info`.
 
 See [SECURITY.md](SECURITY.md) for vulnerability reporting and the protocol security model.
 
@@ -103,9 +205,9 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting and the protocol secu
 ~~~sh
 ruby -Ilib -Itest -e 'Dir["test/**/*_test.rb"].sort.each { |f| require File.expand_path(f) }'
 gem build digestory.gemspec
-gem install --local digestory-0.1.0.gem --no-document
+gem install --local digestory-0.1.1.gem --no-document
 ~~~
 
-The test suite includes RFC/FIPS vectors, compatibility regressions, header-parser security tests, deterministic malformed-input fuzz smoke tests, a local HTTP interoperability server, and optional `curl --digest` interoperability.
+The test suite includes RFC/FIPS vectors, compatibility regressions, header-parser security tests, deterministic malformed-input fuzz smoke tests, protection-space and request-context regressions, local HTTP interoperability, and optional `curl --digest` interoperability.
 
-A `Session` tracks the most recent authenticated request for optional `Authentication-Info` verification. Do not share one Session between concurrent in-flight requests when using `verify: true`; use a separate session state for each independently tracked authentication exchange.
+The suite also covers SHA-512/256 digest construction and replay-safe `auth-int` handling. External-server behavior remains environment-dependent, so local integration tests are supplemented by independent protocol vectors and parser/security regressions.
