@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "uri"
+
 module Digestory
   class Challenge
     attr_reader :realm, :domain, :nonce, :opaque, :algorithm, :qop,
@@ -7,8 +9,13 @@ module Digestory
 
     def self.parse(header)
       challenges = parse_all(header)
-      raise InvalidChallenge, "no Digest challenge found" if challenges.empty?
-      challenges.first
+      return challenges.first unless challenges.empty?
+
+      if digest_scheme_present?(header)
+        raise UnsupportedAlgorithm, "no supported Digest challenge found"
+      end
+
+      raise InvalidChallenge, "no Digest challenge found"
     end
 
     def self.parse_all(header)
@@ -52,6 +59,7 @@ module Digestory
           next
         end
         raise InvalidChallenge, "parameter found before authentication scheme" unless current
+
         key, value = Parameters.split_assignment(stripped)
         canonical = key.downcase
         raise ParseError, "duplicate parameter #{key}" if current.key?(canonical)
@@ -69,6 +77,7 @@ module Digestory
       @realm = fetch_required("realm")
       @nonce = fetch_required("nonce")
       @domain = params["domain"]
+      @domain_uris = parse_domain(@domain).freeze
       @opaque = params["opaque"]
       @algorithm = Algorithm.normalize(params["algorithm"])
       @qop = parse_qop(params["qop"])
@@ -96,16 +105,54 @@ module Digestory
       raise UnsupportedQop, "server offered no supported qop"
     end
 
+    def domain_uris
+      @domain_uris
+    end
+
+    # Returns true when the supplied target is within this challenge's
+    # declared protection space. When domain is absent, RFC 7616 defines the
+    # protection space as the web-origin; origin membership cannot be inferred
+    # from a relative URI alone, so the method returns true in that case.
+    def protects?(uri, base_uri: nil)
+      return true if @domain_uris.empty?
+
+      target = resolve_uri_reference(uri, base_uri)
+      @domain_uris.any? { |entry| uri_prefix_match?(entry, target) }
+    rescue URI::InvalidURIError
+      false
+    end
+
     def with_nonce(value)
       Challenge.new(@params.merge("nonce" => value))
     end
 
     private
 
+    def self.digest_scheme_present?(header)
+      Parameters.split_top_level(header.to_s).any? do |chunk|
+        chunk.strip.match?(/\ADigest\s+/i)
+      end
+    rescue ParseError
+      false
+    end
+
     def fetch_required(key)
       value = @params[key]
       raise InvalidChallenge, "missing #{key}" if value.nil? || value.empty?
       value
+    end
+
+    def parse_domain(value)
+      return [] if value.nil? || value.empty?
+
+      Parameters.parse_list(value).each do |entry|
+        parsed = URI.parse(entry)
+        unless parsed.absolute? || entry.start_with?("/")
+          raise InvalidChallenge, "invalid domain URI #{entry.inspect}"
+        end
+      rescue URI::InvalidURIError => e
+        raise InvalidChallenge, "invalid domain URI #{entry.inspect}: #{e.message}"
+      end
     end
 
     def parse_qop(value)
@@ -125,6 +172,44 @@ module Digestory
       when "true" then true
       when "false" then false
       else raise InvalidChallenge, "invalid boolean #{value.inspect}"
+      end
+    end
+
+    def resolve_uri_reference(value, base_uri)
+      return value.to_s if value.to_s == "*"
+
+      uri = URI.parse(value.to_s)
+      return uri.to_s if uri.absolute?
+      return uri.to_s unless base_uri
+
+      URI.join(base_uri.to_s.end_with?("/") ? base_uri.to_s : "#{base_uri}/", value.to_s).to_s
+    end
+
+    def uri_prefix_match?(entry, target)
+      entry_uri = URI.parse(entry)
+      target_uri = URI.parse(target)
+
+      if entry.start_with?("/")
+        target_path = target_uri.absolute? ? target_uri.path.to_s : target_uri.to_s
+        return target_path.start_with?(entry)
+      end
+
+      return false unless target_uri.absolute?
+      return false unless entry_uri.scheme&.casecmp?(target_uri.scheme)
+      return false unless entry_uri.host&.casecmp?(target_uri.host)
+      return false unless effective_port(entry_uri) == effective_port(target_uri)
+
+      entry_target = entry_uri.to_s
+      target_target = target_uri.to_s
+      target_target.start_with?(entry_target)
+    end
+
+    def effective_port(uri)
+      return uri.port if uri.port
+      case uri.scheme&.downcase
+      when "http" then 80
+      when "https" then 443
+      else nil
       end
     end
   end
