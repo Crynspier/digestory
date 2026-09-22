@@ -26,6 +26,35 @@ class CompatibilityTest < Minitest::Test
     uri = URI("http://u:p@example.org/")
     header = auth.auth_header(uri, 'Digest realm="r", qop="auth", algorithm=MD5, nonce="n"', "GET", true)
     assert_includes header, 'qop="auth"'
+    refute_includes header, 'qop="auth",'
+  end
+
+  def test_cnonce_is_directly_randomized
+    auth = Net::HTTP::DigestAuth.new
+    cnonce = auth.make_cnonce
+    assert_match(/A[0-9a-f]{32}z/, cnonce)
+  end
+
+  def test_bounds_session_cache_without_retaining_password_in_keys
+    auth = Net::HTTP::DigestAuth.new(max_sessions: 1)
+
+    auth.auth_header(
+      URI("http://u:p1@example.org/"),
+      'Digest realm="r", qop="auth", algorithm=MD5, nonce="n1"',
+      "GET"
+    )
+
+    assert_raises(Digestory::AuthenticationFailure) do
+      auth.auth_header(
+        URI("http://u:p2@example.org/"),
+        'Digest realm="r", qop="auth", algorithm=MD5, nonce="n2"',
+        "GET"
+      )
+    end
+
+    keys = auth.instance_variable_get(:@sessions).keys
+    refute keys.flatten.include?("p1")
+    refute keys.flatten.include?("p2")
   end
 end
 
