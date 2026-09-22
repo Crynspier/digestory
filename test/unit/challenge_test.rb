@@ -56,3 +56,65 @@ class MixedAuthenticationSchemeTest < Minitest::Test
     assert_equal ["good"], challenges.map(&:realm)
   end
 end
+
+
+class ChallengeProtectionSpaceTest < Minitest::Test
+  def test_matches_path_absolute_domain_prefix
+    challenge = Digestory::Challenge.parse(
+      'Digest realm="r", domain="/private /api/v1", nonce="n", algorithm=SHA-256, qop="auth"'
+    )
+    assert challenge.protects?("/private/report")
+    assert challenge.protects?("/api/v1/items")
+    refute challenge.protects?("/public")
+  end
+
+  def test_matches_absolute_domain_prefix
+    challenge = Digestory::Challenge.parse(
+      'Digest realm="r", domain="https://example.org/private", nonce="n", algorithm=SHA-256, qop="auth"'
+    )
+    assert challenge.protects?(
+      "https://example.org/private/report"
+    )
+    refute challenge.protects?(
+      "https://example.org/public"
+    )
+    refute challenge.protects?(
+      "https://other.example.org/private/report"
+    )
+  end
+
+  def test_resolves_relative_target_against_base_uri
+    challenge = Digestory::Challenge.parse(
+      'Digest realm="r", domain="https://example.org/private", nonce="n", algorithm=SHA-256, qop="auth"'
+    )
+    assert challenge.protects?("/private/report", base_uri: "https://example.org")
+  end
+end
+
+
+class ChallengeDiagnosticsTest < Minitest::Test
+  def test_parse_surfaces_unsupported_algorithm_when_no_digest_challenge_is_usable
+    assert_raises(Digestory::UnsupportedAlgorithm) do
+      Digestory::Challenge.parse(
+        'Digest realm="r", nonce="n", algorithm=SHA-1, qop="auth"'
+      )
+    end
+  end
+end
+
+
+class ChallengeQopParsingTest < Minitest::Test
+  def test_accepts_common_qop_spacing_variants
+    %w[
+      auth,auth-int
+      auth\,\ auth-int
+      auth\ \ ,\ auth-int
+    ].each do |raw|
+      challenge = Digestory::Challenge.parse(
+        "Digest realm=\"r\", nonce=\"n\", algorithm=SHA-256, qop=\"#{raw}\""
+      )
+      assert_includes challenge.qop, "auth"
+      assert_includes challenge.qop, "auth-int"
+    end
+  end
+end
