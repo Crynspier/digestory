@@ -271,9 +271,9 @@ class SessionProtectionSpaceTest < Minitest::Test
   def test_domain_enforcement_accepts_protected_path
     session = Digestory::Session.new(username: "u", password: "p", enforce_domain: true)
     header = session.authorize(
-      challenge: 'Digest realm="r", domain="/private", nonce="n", algorithm=SHA-256, qop="auth"',
+      challenge: 'Digest realm="r", domain="https://example.org/private", nonce="n", algorithm=SHA-256, qop="auth"',
       method: "GET",
-      uri: "/private/report"
+      uri: "https://example.org/private/report"
     )
     assert_includes header, 'uri="/private/report"'
   end
