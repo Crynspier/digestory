@@ -31,7 +31,6 @@ module Digestory
     # requests, use authorize_with_context instead so each response can be
     # correlated with its own immutable AuthorizationContext.
     def authorize(challenge:, method:, uri:, entity_body: nil, entity_digest: nil, qop: nil, cnonce: nil)
-      pending_nonce, previous_nonce = @mutex.synchronize { [@next_nonce, @last&.nonce] }
       context = build_authorization(
         challenge: challenge,
         method: method,
@@ -40,7 +39,6 @@ module Digestory
         entity_digest: entity_digest,
         qop: qop,
         cnonce: cnonce,
-        nonce: pending_nonce && previous_nonce == pending_nonce ? nil : pending_nonce,
         apply_legacy_nextnonce: true
       )
       @mutex.synchronize do
