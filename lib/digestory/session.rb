@@ -252,7 +252,6 @@ module Digestory
             allow_legacy_no_qop: @allow_legacy_no_qop
           )
           next false if requested_qop && !item.supports_qop?(requested_qop)
-          next false if chosen_qop == "auth-int" && entity_body.nil? && entity_digest.nil?
           true
         rescue UnsupportedQop
           false
