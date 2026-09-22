@@ -2,16 +2,16 @@
 
 require "securerandom"
 require "uri"
-require "cgi"
 
 module Digestory
   class Session
     DEFAULT_QOP_PREFERENCE = %w[auth auth-int].freeze
+    MAX_NONCE_COUNT = 0xffff_ffff
 
     attr_reader :username, :nonce_count
 
     def initialize(username:, password:, qop_preference: DEFAULT_QOP_PREFERENCE, prefer_stronger_algorithm: true,
-                   allow_legacy_no_qop: false, use_username_star: false)
+                   allow_legacy_no_qop: false, use_username_star: false, enforce_domain: false)
       @username = username.to_s
       @password = password.to_s
       raise InvalidHeader, "username cannot contain colon" if @username.include?(":")
@@ -19,34 +19,116 @@ module Digestory
       @prefer_stronger_algorithm = prefer_stronger_algorithm
       @allow_legacy_no_qop = allow_legacy_no_qop
       @use_username_star = use_username_star
+      @enforce_domain = enforce_domain
       @mutex = Mutex.new
+      @nonce_counts = Hash.new(0)
       @nonce_count = 0
-      @current_nonce = nil
+      @next_nonce = nil
       @last = nil
     end
 
-    def authorize(challenge:, method:, uri:, entity_body: nil, qop: nil, cnonce: nil)
-      challenges = case challenge
-                   when String
-                     Challenge.parse_all(challenge)
-                   when Array
-                     challenge.flat_map { |item| item.is_a?(Challenge) ? [item] : Challenge.parse_all(item.to_s) }
-                   when Challenge
-                     [challenge]
-                   else
-                     raise InvalidChallenge, "challenge must be a String, Challenge, or Array"
-                   end
+    # Backwards-compatible API. When verify: true is used with concurrent
+    # requests, use authorize_with_context instead so each response can be
+    # correlated with its own immutable AuthorizationContext.
+    def authorize(challenge:, method:, uri:, entity_body: nil, entity_digest: nil, qop: nil, cnonce: nil)
+      pending_nonce, previous_nonce = @mutex.synchronize { [@next_nonce, @last&.nonce] }
+      context = build_authorization(
+        challenge: challenge,
+        method: method,
+        uri: uri,
+        entity_body: entity_body,
+        entity_digest: entity_digest,
+        qop: qop,
+        cnonce: cnonce,
+        nonce: pending_nonce && previous_nonce == pending_nonce ? nil : pending_nonce,
+        apply_legacy_nextnonce: true
+      )
+      @mutex.synchronize do
+        @next_nonce = nil
+        @last = context
+      end
+      context.header
+    end
 
+    # Returns an immutable request-specific context suitable for concurrent
+    # authentication exchanges.
+    def authorize_with_context(challenge:, method:, uri:, entity_body: nil, entity_digest: nil, qop: nil, cnonce: nil)
+      build_authorization(
+        challenge: challenge,
+        method: method,
+        uri: uri,
+        entity_body: entity_body,
+        entity_digest: entity_digest,
+        qop: qop,
+        cnonce: cnonce
+      )
+    end
+
+    # Continues an authentication exchange using an Authentication-Info
+    # nextnonce explicitly. This avoids global request correlation state.
+    def authorize_from(context, method:, uri:, entity_body: nil, entity_digest: nil, qop: context.qop, cnonce: nil, nonce: nil)
+      raise ArgumentError, "context must be a Digestory::AuthorizationContext" unless context.is_a?(AuthorizationContext)
+
+      build_authorization(
+        challenge: context.challenge,
+        method: method,
+        uri: uri,
+        entity_body: entity_body,
+        entity_digest: entity_digest,
+        qop: qop,
+        cnonce: cnonce,
+        nonce: nonce || context.challenge.nonce
+      )
+    end
+
+    def update_authentication_info(header, response_body: nil, verify: false, context: nil)
+      info = AuthenticationInfo.parse(header)
+      state = context || @mutex.synchronize { @last }
+
+      verify_authentication_info!(state, info, response_body: response_body) if verify
+
+      if info.nextnonce && context.nil?
+        @mutex.synchronize { @next_nonce = info.nextnonce }
+      end
+      info
+    end
+
+    def verify_authentication_info(context, header, response_body: nil)
+      raise ArgumentError, "context must be a Digestory::AuthorizationContext" unless context.is_a?(AuthorizationContext)
+
+      update_authentication_info(header, response_body: response_body, verify: true, context: context)
+    end
+
+    # Legacy convenience accessor. New concurrent code should use the
+    # AuthenticationInfo returned by verify_authentication_info instead.
+    def next_nonce
+      @mutex.synchronize { @next_nonce }
+    end
+
+    private
+
+    def build_authorization(challenge:, method:, uri:, entity_body:, entity_digest:, qop:, cnonce:, nonce: nil,
+                            apply_legacy_nextnonce: false)
+      challenges = parse_challenges(challenge)
       selected_challenge = select_challenge(
         challenges,
         qop: qop,
-        entity_body: entity_body
+        entity_body: entity_body,
+        entity_digest: entity_digest
       )
 
-      previous_nonce = @mutex.synchronize { @last && @last[:challenge]&.nonce }
-      pending_nonce = @mutex.synchronize { @next_nonce }
-      if pending_nonce && previous_nonce == selected_challenge.nonce
-        selected_challenge = selected_challenge.with_nonce(pending_nonce)
+      if apply_legacy_nextnonce
+        pending_nonce, previous_nonce = @mutex.synchronize { [@next_nonce, @last&.nonce] }
+        if pending_nonce && previous_nonce == selected_challenge.nonce
+          selected_challenge = selected_challenge.with_nonce(pending_nonce)
+        end
+      elsif nonce
+        selected_challenge = selected_challenge.with_nonce(nonce) unless nonce == selected_challenge.nonce
+      end
+
+      request_target = request_uri(uri)
+      if @enforce_domain && !selected_challenge.protects?(request_target, base_uri: absolute_base_uri(uri))
+        raise InvalidChallenge, "request URI is outside the Digest challenge protection space"
       end
 
       qop_value = qop&.to_s&.downcase || selected_challenge.choose_qop(
@@ -57,22 +139,21 @@ module Digestory
       if qop_value && !selected_challenge.supports_qop?(qop_value)
         raise UnsupportedQop, "qop #{qop_value.inspect} was not offered by the server"
       end
-      if qop_value == "auth-int" && entity_body.nil?
-        raise UnsupportedQop, "auth-int requires an entity body"
-      end
 
       generated_cnonce = nil
       nc = nil
-      @mutex.synchronize do
-        if qop_value || Algorithm.sess?(selected_challenge.algorithm)
-          if @current_nonce != selected_challenge.nonce
-            @current_nonce = selected_challenge.nonce
-            @nonce_count = 0
-          end
-          raise AuthenticationFailure, "nonce-count exhausted; server must issue a new nonce" if @nonce_count >= 0xffff_ffff
+      nonce_key = nil
 
-          @nonce_count += 1
-          nc = format("%08x", @nonce_count)
+      if qop_value || Algorithm.sess?(selected_challenge.algorithm)
+        nonce_key = nonce_state_key(selected_challenge, request_target)
+        @mutex.synchronize do
+          current = @nonce_counts[nonce_key]
+          raise AuthenticationFailure, "nonce-count exhausted; server must issue a new nonce" if current >= MAX_NONCE_COUNT
+
+          current += 1
+          @nonce_counts[nonce_key] = current
+          @nonce_count = current
+          nc = format("%08x", current)
           generated_cnonce = cnonce || SecureRandom.base64(32)
         end
       end
@@ -82,11 +163,12 @@ module Digestory
         username: @username,
         password: @password,
         method: method.to_s,
-        uri: request_uri(uri),
+        uri: request_target,
         nc: nc,
         cnonce: generated_cnonce,
         qop: qop_value,
-        entity_body: entity_body
+        entity_body: entity_body,
+        entity_digest: entity_digest
       )
 
       username_for_header = selected_challenge.charset == :utf_8 ? @username.unicode_normalize(:nfc) : @username
@@ -109,7 +191,7 @@ module Digestory
                    ["username", username_value]
                  end)
       params << ["realm", selected_challenge.realm]
-      params << ["uri", request_uri(uri)]
+      params << ["uri", request_target]
       params << ["algorithm", selected_challenge.algorithm]
       params << ["nonce", selected_challenge.nonce]
       params << ["nc", nc] if nc
@@ -119,73 +201,34 @@ module Digestory
       params << ["opaque", selected_challenge.opaque] if selected_challenge.opaque
       params << ["userhash", "true"] if selected_challenge.userhash
 
-      header = Serializer.authorization(params)
-      @mutex.synchronize do
-        @next_nonce = nil
-        @last = {
-          challenge: selected_challenge,
-          request_uri: request_uri(uri),
-          method: method.to_s,
-          qop: qop_value,
-          cnonce: generated_cnonce,
-          nc: nc,
-          username: @username,
-          response: response
-        }.freeze
-      end
-      header
+      AuthorizationContext.new(
+        header: Serializer.authorization(params),
+        challenge: selected_challenge,
+        request_uri: request_target,
+        method: method.to_s,
+        qop: qop_value,
+        cnonce: generated_cnonce,
+        nc: nc,
+        username: @username,
+        response: response,
+        nonce_key: nonce_key
+      )
     end
 
-    def update_authentication_info(header, response_body: nil, verify: false)
-      info = AuthenticationInfo.parse(header)
-      state = @mutex.synchronize { @last }
-
-      if verify
-        raise AuthenticationFailure, "no prior authenticated request" unless state
-        raise AuthenticationFailure, "missing rspauth" unless info.rspauth
-
-        if state[:qop]
-          unless info.qop == state[:qop] && info.cnonce == state[:cnonce] && info.nc.downcase == state[:nc]
-            raise AuthenticationFailure, "Authentication-Info request parameters mismatch"
-          end
-        elsif info.qop
-          raise AuthenticationFailure, "unexpected Authentication-Info qop"
-        end
-
-        expected = Digest.rspauth(
-          challenge: state[:challenge],
-          username: state[:username],
-          password: @password,
-          request_uri: state[:request_uri],
-          nc: state[:nc],
-          cnonce: state[:cnonce],
-          qop: state[:qop],
-          response_body: response_body
-        )
-        expected_size = Algorithm.digest_size(state[:challenge].algorithm) * 2
-        unless info.rspauth.bytesize == expected_size
-          raise AuthenticationFailure, "Authentication-Info rspauth has the wrong digest length"
-        end
-        unless secure_compare(expected, info.rspauth.downcase)
-          raise AuthenticationFailure, "Authentication-Info rspauth mismatch"
-        end
+    def parse_challenges(challenge)
+      case challenge
+      when String
+        Challenge.parse_all(challenge)
+      when Array
+        challenge.flat_map { |item| item.is_a?(Challenge) ? [item] : Challenge.parse_all(item.to_s) }
+      when Challenge
+        [challenge]
+      else
+        raise InvalidChallenge, "challenge must be a String, Challenge, or Array"
       end
-
-      if info.nextnonce
-        @mutex.synchronize do
-          @next_nonce = info.nextnonce
-        end
-      end
-      info
     end
 
-    def next_nonce
-      @mutex.synchronize { @next_nonce }
-    end
-
-    private
-
-    def select_challenge(challenges, qop:, entity_body:)
+    def select_challenge(challenges, qop:, entity_body:, entity_digest:)
       raise InvalidChallenge, "no Digest challenge found" if challenges.empty?
 
       usable = challenges.select do |item|
@@ -196,7 +239,7 @@ module Digestory
             allow_legacy_no_qop: @allow_legacy_no_qop
           )
           next false if requested_qop && !item.supports_qop?(requested_qop)
-          next false if chosen_qop == "auth-int" && entity_body.nil?
+          next false if chosen_qop == "auth-int" && entity_body.nil? && entity_digest.nil?
           true
         rescue UnsupportedQop
           false
@@ -207,6 +250,47 @@ module Digestory
       return usable.first unless @prefer_stronger_algorithm
 
       usable.max_by { |item| Algorithm.secure_rank(item.algorithm) }
+    end
+
+    def verify_authentication_info!(state, info, response_body:)
+      raise AuthenticationFailure, "no prior authenticated request" unless state
+      raise AuthenticationFailure, "missing rspauth" unless info.rspauth
+
+      if state.qop
+        unless info.qop == state.qop && info.cnonce == state.cnonce && info.nc&.downcase == state.nc
+          raise AuthenticationFailure, "Authentication-Info request parameters mismatch"
+        end
+      elsif info.qop
+        raise AuthenticationFailure, "unexpected Authentication-Info qop"
+      end
+
+      expected = Digest.rspauth(
+        challenge: state.challenge,
+        username: state.username,
+        password: @password,
+        request_uri: state.request_uri,
+        nc: state.nc,
+        cnonce: state.cnonce,
+        qop: state.qop,
+        response_body: response_body
+      )
+      expected_size = Algorithm.digest_size(state.challenge.algorithm) * 2
+      unless info.rspauth.bytesize == expected_size
+        raise AuthenticationFailure, "Authentication-Info rspauth has the wrong digest length"
+      end
+      unless secure_compare(expected, info.rspauth.downcase)
+        raise AuthenticationFailure, "Authentication-Info rspauth mismatch"
+      end
+    end
+
+    def nonce_state_key(challenge, request_target)
+      origin = begin
+        parsed = URI.parse(request_target)
+        parsed.absolute? ? [parsed.scheme&.downcase, parsed.host&.downcase, parsed.port] : nil
+      rescue URI::InvalidURIError
+        nil
+      end
+      [origin, challenge.realm, challenge.domain, challenge.opaque, challenge.nonce].freeze
     end
 
     def request_uri(uri)
@@ -221,6 +305,16 @@ module Digestory
       "/#{value}"
     rescue URI::InvalidURIError
       "/#{value}"
+    end
+
+    def absolute_base_uri(uri)
+      return uri if uri.is_a?(URI) && uri.absolute?
+
+      value = uri.to_s
+      parsed = URI.parse(value)
+      parsed if parsed.absolute?
+    rescue URI::InvalidURIError
+      nil
     end
 
     def ascii_only?(value)
