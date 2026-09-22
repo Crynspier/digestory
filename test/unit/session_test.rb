@@ -119,11 +119,14 @@ end
 class SessionNonceLimitTest < Minitest::Test
   def test_rejects_nonce_count_overflow
     session = Digestory::Session.new(username: "u", password: "p")
-    session.instance_variable_set(:@nonce_count, 0xffff_ffff)
-    session.instance_variable_set(:@current_nonce, "n")
+    challenge = Digestory::Challenge.parse(
+      'Digest realm="r", nonce="n", algorithm=SHA-256, qop="auth"'
+    )
+    key = session.send(:nonce_state_key, challenge, "/")
+    session.instance_variable_get(:@nonce_counts)[key] = 0xffff_ffff
     assert_raises(Digestory::AuthenticationFailure) do
       session.authorize(
-        challenge: 'Digest realm="r", nonce="n", algorithm=SHA-256, qop="auth"',
+        challenge: challenge,
         method: "GET",
         uri: "/"
       )
