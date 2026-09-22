@@ -275,7 +275,7 @@ class SessionProtectionSpaceTest < Minitest::Test
       method: "GET",
       uri: "https://example.org/private/report"
     )
-    assert_includes header, 'uri="/private/report"'
+    assert_includes header, 'uri="https://example.org/private/report"'
   end
 
   def test_domain_enforcement_fails_closed_without_an_origin
