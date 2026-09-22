@@ -21,10 +21,13 @@ jobs:
         with:
           ruby-version: '4.0'
           bundler-cache: false
+      - name: Resolve gem version
+        id: version
+        run: echo "version=$(ruby -Ilib -e 'require "digestory/version"; print Digestory::VERSION')" >> "$GITHUB_OUTPUT"
       - name: Verify version matches tag
         run: |
           expected="${GITHUB_REF_NAME#v}"
-          actual=$(ruby -Ilib -e 'require "digestory/version"; print Digestory::VERSION')
+          actual="${{ steps.version.outputs.version }}"
           test "$expected" = "$actual"
       - name: Run tests
         run: ruby -Ilib -Itest -e 'Dir["test/**/*_test.rb"].sort.each { |f| require File.expand_path(f) }'
@@ -33,14 +36,15 @@ jobs:
       - name: Fresh consumer test
         run: |
           tmpdir=$(mktemp -d)
-          gem install --local digestory-0.1.0.gem --install-dir "$tmpdir/gems" --no-document
-          GEM_HOME="$tmpdir/gems" GEM_PATH="$tmpdir/gems" ruby -e 'require "digestory"; abort unless Digestory::VERSION == "0.1.0"'
+          gem_file="digestory-${{ steps.version.outputs.version }}.gem"
+          gem install --local "$gem_file" --install-dir "$tmpdir/gems" --no-document
+          EXPECTED_VERSION="${{ steps.version.outputs.version }}" GEM_HOME="$tmpdir/gems" GEM_PATH="$tmpdir/gems" ruby -e 'require "digestory"; abort unless Digestory::VERSION == ENV.fetch("EXPECTED_VERSION")'
       - name: Configure RubyGems credentials
         uses: rubygems/configure-rubygems-credentials@dc5a8d8553e6ee01fc26761a49e99e733d17954a # v2.1.0
       - name: Publish to RubyGems
-        run: gem push digestory-0.1.0.gem
+        run: gem push "digestory-${{ steps.version.outputs.version }}.gem"
 
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" *.gem --generate-notes --verify-tag
+        run: gh release create "$GITHUB_REF_NAME" "digestory-${{ steps.version.outputs.version }}.gem" --generate-notes --verify-tag
