@@ -41,6 +41,9 @@ module Net
         password = URI::DEFAULT_PARSER.unescape(parsed_uri.password.to_s)
         raise Digestory::MissingCredential, "URI must contain username and password" if parsed_uri.user.nil? || parsed_uri.password.nil?
 
+        challenge = Digestory::Challenge.parse(www_authenticate)
+        effective_qop = qop&.to_s&.downcase || (challenge.supports_qop?("auth") ? "auth" : nil)
+
         session = session_for(parsed_uri, username, password, use_username_star: use_username_star)
         header = session.authorize(
           challenge: www_authenticate,
@@ -48,13 +51,12 @@ module Net
           uri: parsed_uri,
           entity_body: entity_body,
           entity_digest: entity_digest,
-          qop: qop,
+          qop: effective_qop,
           cnonce: make_cnonce
         )
 
-        if iis && qop_value_for_compat(www_authenticate, qop, entity_body, entity_digest)
-          qop_value = qop_value_for_compat(www_authenticate, qop, entity_body, entity_digest)
-          header = header.sub("qop=#{qop_value}", 'qop="' + qop_value + '"')
+        if iis && effective_qop
+          header = header.sub("qop=#{effective_qop}", 'qop="' + effective_qop + '"')
         end
         header
       end
@@ -75,15 +77,6 @@ module Net
         end
       end
 
-      def qop_value_for_compat(www_authenticate, requested_qop, entity_body, entity_digest)
-        return requested_qop.to_s.downcase if requested_qop
-        challenge = Digestory::Challenge.parse(www_authenticate)
-        return nil if challenge.qop.empty?
-        return "auth" if challenge.qop.include?("auth")
-        return "auth-int" if (entity_body || entity_digest) && challenge.qop.include?("auth-int")
-
-        nil
-      end
     end
   end
 end
