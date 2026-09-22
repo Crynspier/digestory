@@ -33,4 +33,4 @@ jobs:
           tmpdir=$(mktemp -d)
           gem_file="digestory-$(ruby -Ilib -e 'require "digestory/version"; print Digestory::VERSION').gem"
           gem install --local "$gem_file" --install-dir "$tmpdir/gems" --no-document
-          GEM_HOME="$tmpdir/gems" GEM_PATH="$tmpdir/gems" ruby -e 'require "digestory"; abort unless Digestory::VERSION == File.basename(Dir["$GEM_HOME/cache/digestory-*.gem"].first).delete_prefix("digestory-").delete_suffix(".gem")'
+          EXPECTED_VERSION="$(ruby -Ilib -e 'require "digestory/version"; print Digestory::VERSION')" GEM_HOME="$tmpdir/gems" GEM_PATH="$tmpdir/gems" ruby -e 'require "digestory"; abort unless Digestory::VERSION == ENV.fetch("EXPECTED_VERSION")'
