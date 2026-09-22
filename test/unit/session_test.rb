@@ -13,6 +13,18 @@ class SessionTest < Minitest::Test
     assert_includes second, "nc=00000002"
   end
 
+  def test_can_preserve_server_challenge_order
+    session = Digestory::Session.new(
+      username: "u",
+      password: "p",
+      prefer_stronger_algorithm: false
+    )
+    challenge = 'Digest realm="first", qop="auth", algorithm=MD5, nonce="m", Digest realm="second", qop="auth", algorithm=SHA-256, nonce="s"'
+    header = session.authorize(challenge: challenge, method: "GET", uri: "/")
+    assert_includes header, 'algorithm=MD5'
+    assert_includes header, 'nonce="m"'
+  end
+
   def test_selects_stronger_digest_challenge
     session = Digestory::Session.new(username: "u", password: "p")
     challenge = 'Digest realm="m", qop="auth", algorithm=MD5, nonce="m", Digest realm="s", qop="auth", algorithm=SHA-256, nonce="s"'
