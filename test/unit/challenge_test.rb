@@ -105,10 +105,10 @@ end
 
 class ChallengeQopParsingTest < Minitest::Test
   def test_accepts_common_qop_spacing_variants
-    %w[
-      auth,auth-int
-      auth\,\ auth-int
-      auth\ \ ,\ auth-int
+    [
+      "auth,auth-int",
+      "auth, auth-int",
+      "auth , auth-int"
     ].each do |raw|
       challenge = Digestory::Challenge.parse(
         "Digest realm=\"r\", nonce=\"n\", algorithm=SHA-256, qop=\"#{raw}\""
