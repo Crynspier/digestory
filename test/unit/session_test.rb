@@ -27,7 +27,7 @@ class SessionTest < Minitest::Test
 
   def test_selects_stronger_digest_challenge
     session = Digestory::Session.new(username: "u", password: "p")
-    challenge = 'Digest realm="m", qop="auth", algorithm=MD5, nonce="m", Digest realm="s", qop="auth", algorithm=SHA-256, nonce="s"'
+    challenge = 'Digest realm="r", qop="auth", algorithm=MD5, nonce="m", Digest realm="r", qop="auth", algorithm=SHA-256, nonce="s"'
     header = session.authorize(challenge: challenge, method: "GET", uri: "/")
     assert_includes header, 'algorithm=SHA-256'
     assert_includes header, 'nonce="s"'
